@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 import unicodedata
 
 import numpy as np
@@ -14,6 +15,10 @@ from .vectors import ExactVectorIndex
 _RRF_OFFSET = 60
 _SOURCE_ORDER = ("keyword", "vector")
 _RISK_TOKENS = ("违禁", "禁售", "侵权", "高退款", "质量", "banned", "prohibited")
+_BAN_TOKENS = ("违禁", "禁售", "banned", "prohibited")
+_EXTRA_RISK_TOKENS = ("侵权", "高退款", "质量")
+_CJK_PLATFORM = re.compile(r"[\u3400-\u9fff]+\Z")
+_CJK_DELIMITERS = frozenset("-_/\\|,:;，、；：()[]{}（）【】<>《》\"'“”")
 
 
 def _normalize_text(value: str, *, field: str, optional: bool = False) -> str | None:
@@ -116,14 +121,17 @@ def _child_availability(
     for child in children:
         status = child.sales_status_raw
         normalized_status = _status_key(status)
-        if normalized_status and _is_explicit_platform_ban(normalized_status, platform_key):
-            continue
-        eligible.append(child.sku)
-        if normalized_status and _is_risk_status(normalized_status):
+        is_banned = normalized_status and _is_explicit_platform_ban(normalized_status, platform_key)
+        if normalized_status and _is_risk_status(normalized_status) and (
+            not is_banned or platform_key is None or _has_extra_risk(normalized_status)
+        ):
             warning = f"{child.sku}: {status}"
             if warning not in warning_seen:
                 warning_seen.add(warning)
                 warnings.append(warning)
+        if is_banned:
+            continue
+        eligible.append(child.sku)
     return tuple(eligible), tuple(warnings)
 
 
@@ -136,8 +144,31 @@ def _status_key(status: str) -> str:
 
 
 def _is_explicit_platform_ban(status: str, platform: str | None) -> bool:
-    return platform is not None and platform in status and any(token in status for token in ("违禁", "禁售", "banned", "prohibited"))
+    return (
+        platform is not None
+        and _matches_platform_label(status, platform)
+        and any(token in status for token in _BAN_TOKENS)
+    )
+
+
+def _matches_platform_label(status: str, platform: str) -> bool:
+    if any(character.isascii() and character.isalnum() for character in platform):
+        return re.search(
+            rf"(?<![A-Za-z0-9]){re.escape(platform)}(?![A-Za-z0-9])", status
+        ) is not None
+    if _CJK_PLATFORM.fullmatch(platform) is None:
+        return False
+    start = status.find(platform)
+    while start != -1:
+        if start == 0 or status[start - 1].isspace() or status[start - 1] in _CJK_DELIMITERS:
+            return True
+        start = status.find(platform, start + 1)
+    return False
 
 
 def _is_risk_status(status: str) -> bool:
     return any(token in status for token in _RISK_TOKENS)
+
+
+def _has_extra_risk(status: str) -> bool:
+    return any(token in status for token in _EXTRA_RISK_TOKENS)
