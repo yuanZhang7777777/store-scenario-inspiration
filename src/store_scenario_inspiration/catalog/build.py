@@ -14,24 +14,43 @@ from .normalize import (
 )
 
 
-def _sorted_unique(values: Iterable[str]) -> tuple[str, ...]:
-    return tuple(sorted(set(values), key=lambda value: (value.casefold(), value)))
+def _sorted_unique_display(values: Iterable[str]) -> tuple[str, ...]:
+    displays: dict[str, str] = {}
+    for value in values:
+        key = clean_optional_text(value)
+        if key is None:
+            continue
+        current = displays.get(key)
+        if current is None or value < current:
+            displays[key] = value
+    return tuple(
+        displays[key]
+        for key in sorted(displays, key=lambda value: (value.casefold(), value))
+    )
 
 
-def _unique_in_order(values: Iterable[tuple[str, ...]]) -> tuple[tuple[str, ...], ...]:
-    return tuple(dict.fromkeys(values))
+def _unique_paths_in_order(
+    values: Iterable[tuple[str, ...]],
+) -> tuple[tuple[str, ...], ...]:
+    displays: dict[tuple[str, ...], tuple[str, ...]] = {}
+    for value in values:
+        key = tuple(normalize_compare(part) for part in value)
+        current = displays.get(key)
+        if current is None or value < current:
+            displays[key] = value
+    return tuple(displays.values())
 
 
 def _category_path(row: SourceRow) -> tuple[str, ...]:
     return tuple(
         value
         for value in (
-            clean_optional_text(row.category_level_1),
-            clean_optional_text(row.category_level_2),
-            clean_optional_text(row.category_level_3),
-            clean_optional_text(row.category_level_4),
+            row.category_level_1,
+            row.category_level_2,
+            row.category_level_3,
+            row.category_level_4,
         )
-        if value is not None
+        if clean_optional_text(value) is not None
     )
 
 
@@ -43,9 +62,8 @@ def _leaf_category(row: SourceRow) -> str | None:
         row.category_level_1,
         row.product_catalog,
     ):
-        cleaned = clean_optional_text(value)
-        if cleaned is not None:
-            return cleaned
+        if clean_optional_text(value) is not None:
+            return value
     return None
 
 
@@ -70,22 +88,16 @@ def _validate_row(row: SourceRow) -> tuple[str, str]:
 
 
 def _build_document(main_sku: str, rows: tuple[SourceRow, ...]) -> ProductFamilyDocument:
-    names = tuple(
-        name
-        for row in rows
-        if (name := clean_optional_text(row.product_name)) is not None
-    )
-    cn_names = _sorted_unique(names)
-    english_aliases = _sorted_unique(
-        alias
+    cn_names = _sorted_unique_display(row.product_name for row in rows)
+    english_aliases = _sorted_unique_display(
+        value
         for row in rows
         for value in (row.english_name, row.english_keywords)
-        if (alias := clean_optional_text(value)) is not None
     )
-    leaf_categories = _sorted_unique(
+    leaf_categories = _sorted_unique_display(
         leaf for row in rows if (leaf := _leaf_category(row)) is not None
     )
-    category_paths = _unique_in_order(
+    category_paths = _unique_paths_in_order(
         path for row in rows if (path := _category_path(row))
     )
     vector_text = make_vector_text(
@@ -103,9 +115,9 @@ def _build_document(main_sku: str, rows: tuple[SourceRow, ...]) -> ProductFamily
 
     children = tuple(
         ChildVariant(
-            sku=normalize_compare(row.sku),
-            display_name=normalize_compare(row.product_name),
-            sales_status_raw=normalize_compare(row.sales_status_raw),
+            sku=row.sku,
+            display_name=row.product_name,
+            sales_status_raw=row.sales_status_raw,
             status_flags=(),
         )
         for row in rows

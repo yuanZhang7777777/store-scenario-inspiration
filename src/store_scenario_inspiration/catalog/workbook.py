@@ -9,7 +9,6 @@ from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from .models import SourceRow
-from .normalize import normalize_compare
 
 
 REQUIRED_HEADERS = frozenset(
@@ -65,15 +64,24 @@ def _select_sheet(workbook: object, sheet_name: str | None) -> Worksheet:
         if not _missing_headers(_header_map(worksheet))
     ]
     if len(matches) != 1:
+        available_names = ", ".join(
+            worksheet.title for worksheet in workbook.worksheets  # type: ignore[attr-defined]
+        )
+        matching_names = ", ".join(worksheet.title for worksheet in matches)
         raise CatalogSchemaError(
             "expected exactly one worksheet containing all required headers; "
-            f"found {len(matches)}"
+            f"found {len(matches)} (matching: {matching_names or 'none'}; "
+            f"available: {available_names or 'none'})"
         )
     return matches[0]
 
 
+def _source_text(value: object) -> str:
+    return "" if value is None else str(value)
+
+
 def iter_source_rows(path: Path, sheet_name: str | None = None) -> Iterator[SourceRow]:
-    """Yield normalized string rows from one schema-matching workbook sheet.
+    """Yield raw string rows from one schema-matching workbook sheet.
 
     The workbook is opened with openpyxl's read-only, cached-value mode and is
     always closed after iteration.  This function never saves or otherwise
@@ -88,7 +96,7 @@ def iter_source_rows(path: Path, sheet_name: str | None = None) -> Iterator[Sour
             def value_for(header: str) -> str:
                 index = headers[header]
                 value = values[index] if index < len(values) else None
-                return normalize_compare(value)
+                return _source_text(value)
 
             yield SourceRow(
                 sku=value_for("sku"),

@@ -165,6 +165,36 @@ def test_build_documents_uses_deepest_category_and_marks_only_actual_flags() -> 
     assert document.vector_text_v1 == "商品名称：露营灯"
 
 
+def test_build_documents_retains_raw_children_while_normalizing_group_and_dedup_keys() -> None:
+    documents = build_documents(
+        (
+            _row(
+                " ＳＫＵ-1 ",
+                " ＭＡＩＮ-1 ",
+                "　露营　灯　",
+                sales_status_raw="　状态  一　",
+            ),
+            _row(
+                "SKU-2",
+                "MAIN-1",
+                "露营 灯",
+                sales_status_raw=" status two ",
+            ),
+        )
+    )
+
+    assert len(documents) == 1
+    document = documents[0]
+    assert document.main_sku == "MAIN-1"
+    assert document.doc_id == "main:MAIN-1"
+    assert document.cn_names == ("　露营　灯　",)
+    assert document.vector_text_v1 == "商品名称：露营 灯"
+    assert [(child.sku, child.display_name, child.sales_status_raw) for child in document.children] == [
+        (" ＳＫＵ-1 ", "　露营　灯　", "　状态  一　"),
+        ("SKU-2", "露营 灯", " status two "),
+    ]
+
+
 @pytest.mark.parametrize("sku, main_sku", [("", "MAIN-1"), ("child-1", "")])
 def test_build_documents_rejects_rows_without_required_sku_identifiers(
     sku: str, main_sku: str
