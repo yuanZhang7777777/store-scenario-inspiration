@@ -57,7 +57,12 @@ def _truncate_operational_text(name: str) -> str:
 
 
 def prepare_vector_names(names: Iterable[str]) -> tuple[str, ...]:
-    """Clean, bound, deduplicate, and deterministically order Chinese names."""
+    """Prepare values from the Chinese product-name field for vector text.
+
+    Callers must supply only Chinese product-name field values. This function
+    intentionally does not infer or enforce field provenance, and retains valid
+    mixed-script names such as capacities and model tokens.
+    """
 
     prepared: set[str] = set()
     for name in names:
@@ -69,7 +74,11 @@ def prepare_vector_names(names: Iterable[str]) -> tuple[str, ...]:
 
 
 def make_vector_text(names: Iterable[str]) -> str:
-    """Build the v1 vector-text payload from cleaned product names only."""
+    """Build v1 vector text from Chinese product-name field values only.
+
+    Field-source isolation belongs to the document builder; valid mixed-script
+    characters within a supplied product name are preserved.
+    """
 
     prepared = prepare_vector_names(names)
     if not prepared:

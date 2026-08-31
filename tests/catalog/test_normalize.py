@@ -25,15 +25,30 @@ def test_normalize_compare_nfkc_trims_and_collapses_whitespace(
 
 @pytest.mark.parametrize(
     "value",
-    [" １ ", "N/A", "n-a", "无", "none", "NULL", "unknown", "未知"],
+    [
+        0,
+        1,
+        "0",
+        " １ ",
+        "无",
+        "n-a",
+        "N/A",
+        "na",
+        "none",
+        "NULL",
+        "unknown",
+        "未知",
+    ],
 )
-def test_clean_optional_text_removes_only_whole_cell_placeholders(value: str) -> None:
+def test_clean_optional_text_removes_every_whole_cell_placeholder(value: object) -> None:
     assert clean_optional_text(value) is None
 
 
 def test_clean_optional_text_preserves_digits_and_valid_product_names() -> None:
     assert clean_optional_text("40L防水袋") == "40L防水袋"
     assert clean_optional_text("16寸风扇") == "16寸风扇"
+    assert clean_optional_text("N/A防水袋") == "N/A防水袋"
+    assert clean_optional_text("1号收纳箱") == "1号收纳箱"
 
 
 def test_vector_names_truncate_only_trailing_operational_text() -> None:
@@ -64,6 +79,23 @@ def test_vector_names_limit_individual_names_before_sorting_and_keep_eight() -> 
     names = ["甲" * 121, *[f"样品{i}" for i in range(10)]]
 
     assert prepare_vector_names(names) == tuple(f"样品{i}" for i in range(8))
+
+
+def test_vector_names_truncate_a_single_121_character_name_to_120_characters() -> None:
+    assert prepare_vector_names(["甲" * 121]) == ("甲" * 120,)
+
+
+def test_vector_functions_accept_only_chinese_name_field_values_without_charset_filtering() -> None:
+    names_from_chinese_product_name_field = ["40L防水袋", "XK-40型号收纳箱"]
+
+    assert prepare_vector_names(names_from_chinese_product_name_field) == (
+        "40L防水袋",
+        "XK-40型号收纳箱",
+    )
+    assert (
+        make_vector_text(names_from_chinese_product_name_field)
+        == "商品名称：40L防水袋；XK-40型号收纳箱"
+    )
 
 
 def test_make_vector_text_is_empty_without_valid_names() -> None:
