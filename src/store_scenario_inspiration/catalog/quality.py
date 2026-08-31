@@ -9,7 +9,7 @@ from hashlib import sha256
 import json
 import re
 
-from .models import ProductFamilyDocument, SourceRow
+from .models import ChildVariant, ProductFamilyDocument, SourceRow
 from .normalize import clean_optional_text, normalize_compare
 
 
@@ -89,9 +89,83 @@ class QualityDelta:
     metrics: dict[str, QualityMetricDelta]
 
 
+def _ordered_text_values(values: Sequence[str]) -> list[str]:
+    return sorted(values, key=lambda value: (normalize_compare(value), value))
+
+
+def _ordered_category_paths(
+    paths: Sequence[tuple[str, ...]],
+) -> list[tuple[str, ...]]:
+    return sorted(
+        paths,
+        key=lambda path: (tuple(normalize_compare(part) for part in path), path),
+    )
+
+
+def _canonical_child_payload(child: ChildVariant) -> dict[str, object]:
+    return {
+        "sku": child.sku,
+        "display_name": child.display_name,
+        "sales_status_raw": child.sales_status_raw,
+        "status_flags": _ordered_text_values(child.status_flags),
+    }
+
+
+def _compact_json(payload: object) -> str:
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _ordered_children(children: Sequence[ChildVariant]) -> list[dict[str, object]]:
+    payloads = [_canonical_child_payload(child) for child in children]
+    return sorted(
+        payloads,
+        key=lambda payload: (
+            normalize_compare(str(payload["sku"])),
+            str(payload["sku"]),
+            _compact_json(payload),
+        ),
+    )
+
+
+def _canonical_document_payload(document: ProductFamilyDocument) -> dict[str, object]:
+    return {
+        "doc_id": document.doc_id,
+        "main_sku": document.main_sku,
+        "searchable": document.searchable,
+        "keyword_fields": {
+            "cn_names": _ordered_text_values(document.cn_names),
+            "en_aliases": _ordered_text_values(document.en_aliases),
+            "leaf_categories": _ordered_text_values(document.leaf_categories),
+            "category_paths": [
+                list(path) for path in _ordered_category_paths(document.category_paths)
+            ],
+        },
+        "vector_text_v1": document.vector_text_v1,
+        "children": _ordered_children(document.children),
+        "quality": {
+            "group_size": len(document.children),
+            "flags": _ordered_text_values(document.quality_flags),
+        },
+    }
+
+
+def _ordered_documents(
+    documents: Sequence[ProductFamilyDocument],
+) -> list[ProductFamilyDocument]:
+    return sorted(
+        documents,
+        key=lambda document: (
+            normalize_compare(document.main_sku),
+            document.main_sku,
+            _compact_json(_canonical_document_payload(document)),
+        ),
+    )
+
+
 def _canonical_json(documents: Sequence[ProductFamilyDocument]) -> bytes:
-    payload = [document.to_index_dict() for document in documents]
-    payload.sort(key=lambda value: (str(value["main_sku"]), str(value["doc_id"])))
+    payload = [
+        _canonical_document_payload(document) for document in _ordered_documents(documents)
+    ]
     return json.dumps(
         payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
@@ -206,10 +280,7 @@ def validate_build(
                 )
 
     canonical_payloads = [
-        json.dumps(
-            document.to_index_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":")
-        )
-        for document in documents
+        _compact_json(_canonical_document_payload(document)) for document in documents
     ]
     collision_count = sum(count - 1 for count in Counter(canonical_payloads).values() if count > 1)
     mixed_category_count = sum(
@@ -239,7 +310,9 @@ def validate_build(
         exact_document_collision_count=collision_count,
         canonical_document_sha256=_canonical_hash(documents),
         embedding_document_ids=tuple(
-            document.doc_id for document in documents if document.searchable
+            document.doc_id
+            for document in _ordered_documents(documents)
+            if document.searchable
         ),
         warnings=tuple(warnings),
         errors=tuple(errors),

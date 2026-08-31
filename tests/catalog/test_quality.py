@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from store_scenario_inspiration.catalog.build import build_documents
@@ -140,6 +142,65 @@ def test_canonical_document_hash_is_identical_for_same_build(
 
     assert first.canonical_document_sha256 == second.canonical_document_sha256
     assert len(first.canonical_document_sha256) == 64
+
+
+def test_canonical_hash_and_embedding_candidates_ignore_unordered_collection_order() -> None:
+    rows = (
+        _row("A-2", "A", "露营灯"),
+        _row("B-1", "B", "防水袋", category_level_4="防水袋"),
+        _row("A-1", "A", "露营灯"),
+    )
+    built = build_documents(rows)
+    document_a, document_b = built
+    first_documents = (
+        replace(
+            document_a,
+            cn_names=("乙", "甲"),
+            en_aliases=("zulu", "alpha"),
+            leaf_categories=("乙类", "甲类"),
+            category_paths=(("乙", "二"), ("甲", "一")),
+            children=tuple(reversed(document_a.children)),
+            quality_flags=("placeholder_english", "mixed_leaf_category"),
+        ),
+        replace(
+            document_b,
+            quality_flags=("unsearchable",),
+        ),
+    )
+    reordered_documents = (
+        replace(
+            first_documents[1],
+            quality_flags=tuple(reversed(first_documents[1].quality_flags)),
+        ),
+        replace(
+            first_documents[0],
+            cn_names=tuple(reversed(first_documents[0].cn_names)),
+            en_aliases=tuple(reversed(first_documents[0].en_aliases)),
+            leaf_categories=tuple(reversed(first_documents[0].leaf_categories)),
+            category_paths=tuple(reversed(first_documents[0].category_paths)),
+            children=tuple(reversed(first_documents[0].children)),
+            quality_flags=tuple(reversed(first_documents[0].quality_flags)),
+        ),
+    )
+
+    first = validate_build(rows, first_documents)
+    reordered = validate_build(tuple(reversed(rows)), reordered_documents)
+
+    assert first.canonical_document_sha256 == reordered.canonical_document_sha256
+    assert first.embedding_document_ids == reordered.embedding_document_ids == (
+        "main:A",
+        "main:B",
+    )
+
+
+def test_canonical_hash_changes_when_a_real_document_value_changes() -> None:
+    rows = (_row("A-1", "A", "露营灯"),)
+    document = build_documents(rows)[0]
+
+    original = validate_build(rows, (document,))
+    changed = validate_build(rows, (replace(document, cn_names=("不同商品名",)),))
+
+    assert original.canonical_document_sha256 != changed.canonical_document_sha256
 
 
 def test_quality_report_includes_required_metrics() -> None:
