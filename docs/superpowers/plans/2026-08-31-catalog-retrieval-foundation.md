@@ -1,5 +1,7 @@
 # Catalog Retrieval Foundation Implementation Plan
 
+> **Status:** Completed. This plan records the original foundation tasks and therefore still describes the then-current keyword-only handoff. Local BGE vectors, Codex positive query expansions, weighted multi-query RRF, and configurable Top 1–50 retrieval were added afterward in commit `34808a1`; current behavior is authoritative in `README.md` and the MVP design spec.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a deterministic, versioned ERP catalog indexer with SQLite FTS keyword search, replaceable in-memory vector search, embedding reuse, atomic product-list updates, and rollback.
