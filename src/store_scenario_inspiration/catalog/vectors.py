@@ -78,16 +78,25 @@ def _atomic_json(path: Path, value: object) -> None:
 
 
 def _cached_embedding(path: Path, dimension: int) -> np.ndarray | None:
+    candidate: object | None = None
     try:
         candidate = np.load(path, allow_pickle=False)
-    except (OSError, ValueError, EOFError):
+        if not isinstance(candidate, np.ndarray):
+            return None
+        if candidate.dtype != np.dtype(np.float32):
+            return None
+        if candidate.shape != (dimension,) or not np.isfinite(candidate).all():
+            return None
+        return candidate
+    except Exception:
         return None
-    if candidate.dtype != np.dtype(np.float32):
-        return None
-    vector = np.asarray(candidate)
-    if vector.shape != (dimension,) or not np.isfinite(vector).all():
-        return None
-    return vector
+    finally:
+        close = getattr(candidate, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                pass
 
 
 def _validate_provider_vectors(result: object, misses: int, dimension: int) -> np.ndarray:
@@ -194,10 +203,21 @@ class ExactVectorIndex:
 
     @classmethod
     def load(cls, matrix_path: Path, rows_path: Path) -> "ExactVectorIndex":
+        loaded: object | None = None
         try:
-            matrix = np.asarray(np.load(Path(matrix_path), allow_pickle=False), dtype=np.float32)
+            loaded = np.load(Path(matrix_path), allow_pickle=False)
         except (OSError, ValueError, EOFError) as error:
             raise ValueError("vector matrix artifact is invalid") from error
+        try:
+            if not isinstance(loaded, np.ndarray):
+                raise ValueError("vector matrix artifact must be a NumPy array")
+            if loaded.dtype != np.dtype(np.float32):
+                raise ValueError("vector matrix artifact dtype must be float32")
+            matrix = loaded
+        finally:
+            close = getattr(loaded, "close", None)
+            if callable(close):
+                close()
         try:
             payload = json.loads(Path(rows_path).read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:

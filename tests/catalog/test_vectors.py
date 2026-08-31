@@ -131,6 +131,24 @@ def test_normalized_blank_vector_text_is_not_embedded(
     assert artifact.matrix.shape == (0, provider.dimension)
 
 
+def test_npz_disguised_as_cache_entry_is_recomputed_and_atomically_replaced(
+    tmp_path: Path, documents: tuple[ProductFamilyDocument, ...]
+) -> None:
+    provider = RecordingProvider()
+    cache = tmp_path / "cache"
+    build_vector_matrix((documents[0],), provider, cache)
+    cached = next((cache / "embeddings").glob("*.npy"))
+    with cached.open("wb") as stream:
+        np.savez(stream, embedding=np.ones((3,), dtype=np.float32))
+
+    build_vector_matrix((documents[0],), provider, cache)
+
+    assert provider.calls == [("商品名称：户外灯",), ("商品名称：户外灯",)]
+    reloaded = np.load(cached, allow_pickle=False)
+    assert isinstance(reloaded, np.ndarray)
+    assert reloaded.dtype == np.dtype(np.float32)
+
+
 def test_vector_build_rejects_duplicate_identities_and_invalid_provider_outputs(
     tmp_path: Path, documents: tuple[ProductFamilyDocument, ...]
 ) -> None:
@@ -214,6 +232,8 @@ def test_exact_vector_search_rejects_invalid_queries(tmp_path: Path, query: np.n
     [
         (np.ones((2, 2), dtype=np.float32), ["A"], "row count"),
         (np.ones((2,), dtype=np.float32), ["A", "B"], "2D"),
+        (np.ones((2, 2), dtype=np.float64), ["A", "B"], "float32"),
+        (np.ones((2, 2), dtype=np.int32), ["A", "B"], "float32"),
         (np.asarray([[1, np.inf]], dtype=np.float32), ["A"], "finite"),
         (np.ones((2, 2), dtype=np.float32), ["A", "A"], "duplicate"),
     ],
