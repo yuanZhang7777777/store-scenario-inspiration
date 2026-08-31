@@ -26,22 +26,51 @@ DEFAULT_BENCHMARK_PATH = (
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--benchmark", type=Path, default=DEFAULT_BENCHMARK_PATH)
+    parser.add_argument("--index-root", type=Path)
     return parser
 
 
 def main(argv: Sequence[str] | None = None, search_fn: SearchFunction | None = None) -> int:
     """Print a benchmark report and return its command-line status code.
 
-    Task 6 wires a catalog store into this injection boundary.  Until then, the
-    script remains runnable and explicitly reports the missing dependency.
+    An injected search function retains the Task 5 testing boundary. Otherwise,
+    ``--index-root`` opens the active SQLite version for a keyword-only baseline.
     """
 
     args = _parser().parse_args(argv)
-    if search_fn is None:
+    if search_fn is None and args.index_root is None:
         print("search dependency is not wired; supply a search_fn programmatically", file=sys.stderr)
         return 2
 
-    report = run_benchmark(search_fn, load_benchmark(args.benchmark))
+    try:
+        items = load_benchmark(args.benchmark)
+        if search_fn is not None:
+            report = run_benchmark(search_fn, items)
+        else:
+            from store_scenario_inspiration.catalog.retrieval import (
+                HybridRetriever,
+                RetrievalQuery,
+            )
+            from store_scenario_inspiration.catalog.storage import CatalogStore
+            from store_scenario_inspiration.catalog.versioning import CatalogIndexManager
+
+            manager = CatalogIndexManager(args.index_root)
+            store_path = manager.active_store_path()
+            if store_path is None:
+                print("active catalog index is not available", file=sys.stderr)
+                return 2
+            with CatalogStore.open_readonly(store_path) as store:
+                retriever = HybridRetriever(store)
+
+                def active_search(query: str, top_k: int) -> Sequence[SearchHit]:
+                    return retriever.search(
+                        RetrievalQuery(text=query), query_vector=None, limit=top_k
+                    )
+
+                report = run_benchmark(active_search, items)
+    except Exception as error:
+        print(f"benchmark error: {error}", file=sys.stderr)
+        return 2
     print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
     return 1 if report.enforced and report.passes_threshold is False else 0
 

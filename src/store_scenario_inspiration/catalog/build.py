@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable
+import re
 
 from .models import ChildVariant, ProductFamilyDocument, SourceRow
 from .normalize import (
@@ -87,8 +88,42 @@ def _validate_row(row: SourceRow) -> tuple[str, str]:
     return sku, main_sku
 
 
+def _remove_identifier_tokens(value: str, identifiers: tuple[str, ...]) -> str:
+    """Remove this family's known metadata IDs from an indexed source name.
+
+    The untouched raw value remains on ``ChildVariant.display_name``.  Limiting
+    removal to exact known IDs avoids guessing that every model-like token is a
+    SKU while still enforcing the metadata/semantic boundary.
+    """
+
+    cleaned = clean_optional_text(value)
+    if cleaned is None:
+        return value
+    sanitized = cleaned
+    for identifier in sorted(set(identifiers), key=lambda item: (-len(item), item)):
+        pattern = rf"(?<![A-Za-z0-9_-]){re.escape(identifier)}(?![A-Za-z0-9_-])"
+        sanitized = re.sub(pattern, " ", sanitized, flags=re.IGNORECASE)
+    if sanitized == cleaned:
+        return value
+    sanitized = " ".join(sanitized.split()).strip(
+        " ,.;:，。；：、/\\|()[]{}（）【】<>《》\"'“”-_"
+    )
+    return sanitized
+
+
 def _build_document(main_sku: str, rows: tuple[SourceRow, ...]) -> ProductFamilyDocument:
-    cn_names = _sorted_unique_display(row.product_name for row in rows)
+    identifiers = tuple(
+        sorted(
+            {
+                main_sku,
+                *(normalize_compare(row.sku) for row in rows),
+            }
+        )
+    )
+    indexed_names = tuple(
+        _remove_identifier_tokens(row.product_name, identifiers) for row in rows
+    )
+    cn_names = _sorted_unique_display(indexed_names)
     english_aliases = _sorted_unique_display(
         value
         for row in rows
@@ -100,9 +135,7 @@ def _build_document(main_sku: str, rows: tuple[SourceRow, ...]) -> ProductFamily
     category_paths = _unique_paths_in_order(
         path for row in rows if (path := _category_path(row))
     )
-    vector_text = make_vector_text(
-        clean_optional_text(row.product_name) or "" for row in rows
-    )
+    vector_text = make_vector_text(indexed_names)
     flags: set[str] = set()
     if len(leaf_categories) > 1:
         flags.add("mixed_leaf_category")

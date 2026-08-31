@@ -195,6 +195,31 @@ def test_build_documents_retains_raw_children_while_normalizing_group_and_dedup_
     ]
 
 
+def test_build_documents_removes_known_sku_tokens_from_indexed_product_names() -> None:
+    document = build_documents(
+        (
+            _row(
+                "BCFBA378",
+                "ZQFBA086",
+                "纸箱，绑定ZQFBA086、ZQFBA086A",
+            ),
+            _row(
+                "ZQFBA086",
+                "ZQFBA086",
+                "热巧克力礼品；仓库BCFBA378打包绑定ZQFBA086",
+            ),
+            _row("ZQFBA086A", "ZQFBA086", "热巧克力礼品补充款"),
+        )
+    )[0]
+
+    indexed_text = " ".join((*document.cn_names, document.vector_text_v1))
+    assert "纸箱" in indexed_text
+    assert "热巧克力礼品" in indexed_text
+    for identifier in ("BCFBA378", "ZQFBA086", "ZQFBA086A"):
+        assert identifier not in indexed_text
+    assert any("ZQFBA086" in child.display_name for child in document.children)
+
+
 @pytest.mark.parametrize("sku, main_sku", [("", "MAIN-1"), ("child-1", "")])
 def test_build_documents_rejects_rows_without_required_sku_identifiers(
     sku: str, main_sku: str
