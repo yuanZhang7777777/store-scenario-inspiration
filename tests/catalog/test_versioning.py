@@ -4,7 +4,10 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -647,4 +650,151 @@ def test_active_validation_rejects_resigned_invalid_delta_schema(tmp_path: Path)
     artifacts_path.write_text(json.dumps(artifacts), encoding="utf-8")
 
     with pytest.raises(CatalogIndexError, match="delta report"):
+        manager.active_manifest()
+
+
+def _fail_writer_unlock(monkeypatch: pytest.MonkeyPatch) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        original = msvcrt.locking
+
+        def fail_unlock(fd: int, mode: int, size: int) -> object:
+            if mode == msvcrt.LK_UNLCK:
+                raise OSError("unlock unavailable")
+            return original(fd, mode, size)
+
+        monkeypatch.setattr(msvcrt, "locking", fail_unlock)
+    else:
+        import fcntl
+
+        original = fcntl.flock
+
+        def fail_unlock(fd: int, mode: int) -> object:
+            if mode == fcntl.LOCK_UN:
+                raise OSError("unlock unavailable")
+            return original(fd, mode)
+
+        monkeypatch.setattr(fcntl, "flock", fail_unlock)
+
+
+def test_rebuild_returns_committed_manifest_when_writer_unlock_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _write_source(
+        tmp_path / "source.xlsx", (_row("SKU-1", "MAIN-1", "露营灯"),)
+    )
+    manager = CatalogIndexManager(tmp_path / "catalog")
+    _fail_writer_unlock(monkeypatch)
+
+    manifest = manager.rebuild(source, sheet_name=None, provider=None)
+
+    assert manager._read_active_state(required=True).version_id == manifest.version_id
+
+
+def test_rollback_returns_restored_manifest_when_writer_unlock_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first_source = _write_source(
+        tmp_path / "first.xlsx", (_row("SKU-1", "MAIN-1", "露营灯"),)
+    )
+    second_source = _write_source(
+        tmp_path / "second.xlsx", (_row("SKU-2", "MAIN-2", "太阳能灯"),)
+    )
+    manager = CatalogIndexManager(tmp_path / "catalog")
+    first = manager.rebuild(first_source, sheet_name=None, provider=None)
+    manager.rebuild(second_source, sheet_name=None, provider=None)
+    _fail_writer_unlock(monkeypatch)
+
+    restored = manager.rollback()
+
+    assert restored == first
+    assert manager._read_active_state(required=True).version_id == first.version_id
+
+
+def test_writer_unlock_failure_preserves_the_original_rebuild_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    invalid = tmp_path / "invalid.xlsx"
+    workbook = Workbook()
+    workbook.active.append(("sku", "商品名称"))
+    workbook.save(invalid)
+    manager = CatalogIndexManager(tmp_path / "catalog")
+    _fail_writer_unlock(monkeypatch)
+
+    with pytest.raises(ValueError, match="required headers"):
+        manager.rebuild(invalid, sheet_name=None, provider=None)
+
+
+def test_real_subprocess_writer_lock_rejects_then_releases(tmp_path: Path) -> None:
+    source = _write_source(
+        tmp_path / "source.xlsx", (_row("SKU-1", "MAIN-1", "露营灯"),)
+    )
+    root = tmp_path / "catalog"
+    manager = CatalogIndexManager(root)
+    manager.rebuild(source, sheet_name=None, provider=None)
+    program = (
+        "from pathlib import Path; import sys; "
+        "from store_scenario_inspiration.catalog.versioning import CatalogIndexManager; "
+        "manager=CatalogIndexManager(Path(sys.argv[1])); "
+        "lock=manager._writer_lock(); lock.__enter__(); print('ready', flush=True); "
+        "sys.stdin.read(); lock.__exit__(None, None, None)"
+    )
+    child = subprocess.Popen(
+        [sys.executable, "-c", program, str(root)],
+        cwd=Path.cwd(),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+    )
+    try:
+        assert child.stdout is not None
+        assert child.stdout.readline().strip() == "ready"
+        with pytest.raises(CatalogIndexError, match="writer lock"):
+            manager.rebuild(source, sheet_name=None, provider=None)
+        assert child.stdin is not None
+        stdout, stderr = child.communicate("release", timeout=10)
+        assert child.returncode == 0, stderr or stdout
+    finally:
+        if child.poll() is None:
+            child.terminate()
+            child.wait(timeout=10)
+    assert manager.rebuild(source, sheet_name=None, provider=None).version_id
+
+
+def test_bad_active_same_source_cannot_skip_and_resets_skip_flag(tmp_path: Path) -> None:
+    source = _write_source(
+        tmp_path / "source.xlsx", (_row("SKU-1", "MAIN-1", "露营灯"),)
+    )
+    manager = CatalogIndexManager(tmp_path / "catalog")
+    manifest = manager.rebuild(source, sheet_name=None, provider=None)
+    manager.rebuild(source, sheet_name=None, provider=None)
+    assert manager.last_rebuild_skipped is True
+    (manager.index_root / "versions" / manifest.version_id / "catalog.sqlite3").unlink()
+
+    with pytest.raises(CatalogIndexError, match="incomplete"):
+        manager.rebuild(source, sheet_name=None, provider=None)
+
+    assert manager.last_rebuild_skipped is False
+
+
+def test_resigned_corrupt_vector_rows_are_rejected_by_embedding_id_validation(
+    tmp_path: Path,
+) -> None:
+    source = _write_source(
+        tmp_path / "source.xlsx", (_row("SKU-1", "MAIN-1", "露营灯"),)
+    )
+    manager = CatalogIndexManager(tmp_path / "catalog")
+    manifest = manager.rebuild(source, sheet_name=None, provider=RecordingProvider())
+    version = manager.index_root / "versions" / manifest.version_id
+    rows_path = version / "vector-rows.json"
+    rows_path.write_text('["other"]', encoding="utf-8")
+    artifacts_path = version / "artifacts.json"
+    artifacts = json.loads(artifacts_path.read_text(encoding="utf-8"))
+    artifacts["vector-rows.json"] = sha256(rows_path.read_bytes()).hexdigest()
+    artifacts_path.write_text(json.dumps(artifacts), encoding="utf-8")
+
+    with pytest.raises(CatalogIndexError, match="vector rows"):
         manager.active_manifest()

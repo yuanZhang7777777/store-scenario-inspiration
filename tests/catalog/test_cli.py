@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -150,6 +151,62 @@ def test_rebuild_output_failure_does_not_claim_the_old_version_is_active(
     assert main(["rebuild", "--source", str(source), "--index-root", str(tmp_path / "catalog")]) != 0
 
     assert "new version may already be active; run status" in capsys.readouterr().err
+
+
+def _fail_writer_unlock(monkeypatch) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        original = msvcrt.locking
+        monkeypatch.setattr(
+            msvcrt,
+            "locking",
+            lambda fd, mode, size: (_ for _ in ()).throw(OSError("unlock unavailable"))
+            if mode == msvcrt.LK_UNLCK
+            else original(fd, mode, size),
+        )
+    else:
+        import fcntl
+
+        original = fcntl.flock
+        monkeypatch.setattr(
+            fcntl,
+            "flock",
+            lambda fd, mode: (_ for _ in ()).throw(OSError("unlock unavailable"))
+            if mode == fcntl.LOCK_UN
+            else original(fd, mode),
+        )
+
+
+def test_cli_rebuild_succeeds_when_post_commit_unlock_fails(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    source = _write_source(tmp_path / "source.xlsx")
+    _fail_writer_unlock(monkeypatch)
+
+    assert main(["rebuild", "--source", str(source), "--index-root", str(tmp_path / "catalog")]) == 0
+
+    output = _lines(capsys.readouterr().out)
+    assert output["active_version"] != "none"
+
+
+def test_cli_rollback_succeeds_when_post_commit_unlock_fails(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    root = tmp_path / "catalog"
+    first = _write_source(tmp_path / "first.xlsx")
+    second = _write_source(
+        tmp_path / "second.xlsx", (("SECOND-A", "SECOND", "太阳能灯", ""),)
+    )
+    assert main(["rebuild", "--source", str(first), "--index-root", str(root)]) == 0
+    first_version = _lines(capsys.readouterr().out)["active_version"]
+    assert main(["rebuild", "--source", str(second), "--index-root", str(root)]) == 0
+    capsys.readouterr()
+    _fail_writer_unlock(monkeypatch)
+
+    assert main(["rollback", "--index-root", str(root)]) == 0
+
+    assert _lines(capsys.readouterr().out)["active_version"] == first_version
 
 
 def test_status_without_active_is_clean_but_invalid_searches_are_nonzero(

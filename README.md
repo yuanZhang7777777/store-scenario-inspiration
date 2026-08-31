@@ -39,6 +39,8 @@ uv run store-catalog rebuild `
 
 当前 CLI 不连接 embedding provider，因此输出 `vector_status=absent`。8,550 级别的商品族可由 SQLite 与可选连续 NumPy 矩阵支持，无需安装或运维独立 vector database。每个 index root 自动采用非阻塞的跨进程 single-writer lock：同时运行第二个 rebuild 或 rollback 会清晰失败；只读的 status 与 search 不加锁。
 
+`active.json` 是唯一的恢复权威，且始终包含当前版本及其 previous 版本的完整 pair。`previous.json` 只是为旧工具保留的派生兼容文件；它在崩溃窗口中可能暂时落后，绝不能用于 rollback 或任何恢复决策。
+
 ## 状态、检索与回滚
 
 ```powershell

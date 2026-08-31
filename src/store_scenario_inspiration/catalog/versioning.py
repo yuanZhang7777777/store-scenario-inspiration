@@ -357,25 +357,30 @@ class CatalogIndexManager:
 
         self.index_root.mkdir(parents=True, exist_ok=True)
         path = self.index_root / ".writer.lock"
-        with path.open("a+b") as stream:
+        stream = path.open("a+b")
+        try:
             if path.stat().st_size == 0:
                 stream.write(b"0")
                 stream.flush()
             stream.seek(0)
-            try:
-                if os.name == "nt":
-                    import msvcrt
+            if os.name == "nt":
+                import msvcrt
 
-                    msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
-                else:
-                    import fcntl
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
 
-                    fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError as error:
-                raise CatalogIndexError(f"catalog writer lock is already held: {path}") from error
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
             try:
-                yield
-            finally:
+                stream.close()
+            except OSError:
+                pass
+            raise CatalogIndexError(f"catalog writer lock is already held: {path}") from error
+        try:
+            yield
+        finally:
+            try:
                 stream.seek(0)
                 if os.name == "nt":
                     import msvcrt
@@ -385,6 +390,13 @@ class CatalogIndexManager:
                     import fcntl
 
                     fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
+            finally:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
 
     def _write_derived_previous(self, version_id: str | None) -> None:
         """Publish the compatibility pointer before authoritative state."""
@@ -492,6 +504,7 @@ class CatalogIndexManager:
     ) -> BuildManifest:
         """Build completely in staging and activate only after every check passes."""
 
+        self.last_rebuild_skipped = False
         model_id = self._model_id(provider)
         with self._writer_lock():
             return self._rebuild_locked(source, sheet_name, provider, model_id)
