@@ -98,3 +98,5 @@ class SearchHit:
     main_sku: str
     score: float
     sources: tuple[str, ...]
+    eligible_child_skus: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
