@@ -60,31 +60,43 @@ class HybridRetriever:
         query: RetrievalQuery,
         query_vector: np.ndarray | None,
         limit: int = 5,
+        *,
+        expanded_queries: tuple[str, ...] = (),
+        expanded_query_vectors: tuple[np.ndarray | None, ...] = (),
     ) -> tuple[SearchHit, ...]:
         if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
             raise ValueError("limit must be a positive integer")
+        if len(expanded_queries) != len(expanded_query_vectors):
+            raise ValueError("expanded queries and vectors must have the same length")
         if query_vector is not None and self._vector_index is None:
             raise ValueError("query vector requires a vector index")
-
-        candidate_limit = max(50, limit * 10)
-        channels: list[tuple[str, tuple[SearchHit, ...]]] = [
-            ("keyword", self._store.keyword_search(query.text, candidate_limit))
-        ]
-        if query_vector is not None and self._vector_index is not None:
-            channels.append(("vector", self._vector_index.search(query_vector, candidate_limit)))
+        if any(vector is not None for vector in expanded_query_vectors) and self._vector_index is None:
+            raise ValueError("query vector requires a vector index")
 
         fused: dict[str, dict[str, object]] = {}
-        for source, candidates in channels:
-            seen_in_source: set[str] = set()
-            for position, candidate in enumerate(candidates, start=1):
-                if candidate.main_sku in seen_in_source:
-                    continue
-                seen_in_source.add(candidate.main_sku)
-                evidence = fused.setdefault(candidate.main_sku, {"score": 0.0, "sources": set()})
-                evidence["score"] = float(evidence["score"]) + 1 / (_RRF_OFFSET + position)
-                cast_sources = evidence["sources"]
-                assert isinstance(cast_sources, set)
-                cast_sources.add(source)
+        queries = ((query.text, query_vector, 1.0),) + tuple(
+            (_normalize_text(text, field="expanded query"), vector, 0.7)
+            for text, vector in zip(expanded_queries, expanded_query_vectors, strict=True)
+        )
+        for query_text, vector, weight in queries:
+            channels: list[tuple[str, tuple[SearchHit, ...]]] = [
+                ("keyword", self._store.keyword_search(query_text, 50))
+            ]
+            if vector is not None and self._vector_index is not None:
+                channels.append(("vector", self._vector_index.search(vector, 50)))
+            for source, candidates in channels:
+                seen_in_source: set[str] = set()
+                for position, candidate in enumerate(candidates, start=1):
+                    if candidate.main_sku in seen_in_source:
+                        continue
+                    seen_in_source.add(candidate.main_sku)
+                    evidence = fused.setdefault(candidate.main_sku, {"score": 0.0, "sources": set(), "queries": set()})
+                    evidence["score"] = float(evidence["score"]) + weight / (_RRF_OFFSET + position)
+                    cast_sources = evidence["sources"]
+                    cast_queries = evidence["queries"]
+                    assert isinstance(cast_sources, set) and isinstance(cast_queries, set)
+                    cast_sources.add(source)
+                    cast_queries.add(query_text)
 
         ranked = sorted(fused.items(), key=lambda item: (-float(item[1]["score"]), item[0]))
         results: list[SearchHit] = []
@@ -96,7 +108,8 @@ class HybridRetriever:
             if document.children and not eligible:
                 continue
             evidence_sources = evidence["sources"]
-            assert isinstance(evidence_sources, set)
+            evidence_queries = evidence["queries"]
+            assert isinstance(evidence_sources, set) and isinstance(evidence_queries, set)
             results.append(
                 SearchHit(
                     main_sku=document.main_sku,
@@ -104,6 +117,7 @@ class HybridRetriever:
                     sources=tuple(source for source in _SOURCE_ORDER if source in evidence_sources),
                     eligible_child_skus=eligible,
                     warnings=warnings,
+                    matched_queries=tuple(item[0] for item in queries if item[0] in evidence_queries),
                 )
             )
             if len(results) == limit:

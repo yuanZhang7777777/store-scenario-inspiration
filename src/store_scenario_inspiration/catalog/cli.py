@@ -11,6 +11,7 @@ import sys
 from .models import BuildManifest
 from .retrieval import HybridRetriever, RetrievalQuery
 from .storage import CatalogStore
+from .vectors import ExactVectorIndex, FastEmbedEmbeddingProvider
 from .versioning import CatalogIndexError, CatalogIndexManager
 
 
@@ -24,15 +25,17 @@ def _parser() -> argparse.ArgumentParser:
     rebuild = commands.add_parser("rebuild", help="build and activate a complete catalog")
     rebuild.add_argument("--source", type=Path, required=True)
     rebuild.add_argument("--sheet")
+    rebuild.add_argument("--with-vectors", action="store_true", help="embed with local BGE")
     rebuild.add_argument("--index-root", type=Path, default=DEFAULT_INDEX_ROOT)
 
     status = commands.add_parser("status", help="show the active catalog version")
     status.add_argument("--index-root", type=Path, default=DEFAULT_INDEX_ROOT)
 
-    search = commands.add_parser("search", help="search the active keyword index")
+    search = commands.add_parser("search", help="search the active catalog index")
     search.add_argument("--query", required=True)
+    search.add_argument("--expanded-query", action="append", default=[])
     search.add_argument("--platform")
-    search.add_argument("--top-k", type=int, default=5)
+    search.add_argument("--top-k", type=int, default=20)
     search.add_argument("--index-root", type=Path, default=DEFAULT_INDEX_ROOT)
 
     rollback = commands.add_parser("rollback", help="swap active and previous versions")
@@ -103,7 +106,8 @@ def _print_active(
 def _rebuild(args: argparse.Namespace) -> int:
     manager = CatalogIndexManager(args.index_root)
     try:
-        manifest = manager.rebuild(args.source, sheet_name=args.sheet, provider=None)
+        provider = FastEmbedEmbeddingProvider(args.index_root / "model-cache") if args.with_vectors else None
+        manifest = manager.rebuild(args.source, sheet_name=args.sheet, provider=provider)
     except Exception:
         print("previous index remains active", file=sys.stderr)
         raise
@@ -125,29 +129,54 @@ def _status(args: argparse.Namespace) -> int:
 
 
 def _search(args: argparse.Namespace) -> int:
-    if args.top_k <= 0:
-        raise ValueError("top-k must be a positive integer")
+    if not 1 <= args.top_k <= 50:
+        raise ValueError("top-k must be an integer from 1 to 50")
     query = RetrievalQuery(text=args.query, platform=args.platform)
+    expanded_queries = tuple(args.expanded_query)
     manager = CatalogIndexManager(args.index_root)
     store_path = manager.active_store_path()
     if store_path is None:
         raise CatalogIndexError("no active catalog index")
+    manifest = manager.active_manifest()
+    if manifest is None:
+        raise CatalogIndexError("no active catalog index")
+    vector_index = None
+    query_vector = None
+    expanded_query_vectors: tuple[object | None, ...] = (None,) * len(expanded_queries)
+    if manifest.vector_status == "present":
+        version_dir = manager.index_root / "versions" / manifest.version_id
+        vector_index = ExactVectorIndex.load(version_dir / "vectors.npy", version_dir / "vector-rows.json")
+        provider = FastEmbedEmbeddingProvider(args.index_root / "model-cache")
+        query_vectors = provider.embed_queries((query.text, *expanded_queries))
+        query_vector = query_vectors[0]
+        expanded_query_vectors = tuple(query_vectors[1:])
     with CatalogStore.open_readonly(store_path) as store:
-        hits = HybridRetriever(store).search(query, query_vector=None, limit=args.top_k)
-    payload = {
-        "query": query.text,
-        "platform": query.platform,
-        "top_k": args.top_k,
-        "results": [
+        retriever = HybridRetriever(store, vector_index)
+        hits = retriever.search(
+            query,
+            query_vector=query_vector,
+            expanded_queries=expanded_queries,
+            expanded_query_vectors=expanded_query_vectors,
+            limit=args.top_k,
+        )
+        results = [
             {
                 "main_sku": hit.main_sku,
                 "score": hit.score,
                 "sources": list(hit.sources),
                 "eligible_child_skus": list(hit.eligible_child_skus),
+                "child_skus": list(hit.eligible_child_skus),
+                "product_name": (document.cn_names[0] if (document := store.get_document(hit.main_sku)) and document.cn_names else ""),
+                "matched_queries": list(hit.matched_queries),
                 "warnings": list(hit.warnings),
             }
             for hit in hits
-        ],
+        ]
+    payload = {
+        "query": query.text,
+        "platform": query.platform,
+        "top_k": args.top_k,
+        "results": results,
     }
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
     return 0

@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 
+import numpy as np
 from openpyxl import Workbook
 
 from store_scenario_inspiration.catalog.cli import main
@@ -258,6 +259,57 @@ def test_search_applies_platform_child_filtering(tmp_path: Path, capsys) -> None
     result = json.loads(capsys.readouterr().out)["results"][0]
     assert result["eligible_child_skus"] == ["SAFE"]
     assert result["warnings"] == []
+
+
+def test_vector_rebuild_and_multi_query_search_return_product_evidence(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    class LocalProvider:
+        model_id = "BAAI/bge-small-zh-v1.5"
+        dimension = 512
+
+        def __init__(self, cache_dir: Path) -> None:
+            assert cache_dir == root / "model-cache"
+
+        def embed(self, texts):
+            return self.embed_documents(texts)
+
+        def embed_documents(self, texts):
+            return np.ones((len(texts), 512), dtype=np.float32)
+
+        def embed_queries(self, texts):
+            return np.ones((len(texts), 512), dtype=np.float32)
+
+    monkeypatch.setattr(cli, "FastEmbedEmbeddingProvider", LocalProvider)
+    root = tmp_path / "catalog"
+    source = _write_source(tmp_path / "source.xlsx")
+
+    assert main(["rebuild", "--with-vectors", "--source", str(source), "--index-root", str(root)]) == 0
+    assert _lines(capsys.readouterr().out)["vector_status"] == "present"
+
+    assert main([
+        "search", "--query", "露营灯", "--expanded-query", "户外太阳能灯笼",
+        "--index-root", str(root),
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    result = payload["results"][0]
+    assert payload["top_k"] == 20
+    assert result["product_name"] == "户外太阳能灯笼"
+    assert result["child_skus"] == ["ZXOD3713-A"]
+    assert result["matched_queries"] == ["露营灯", "户外太阳能灯笼"]
+    assert result["sources"] == ["keyword", "vector"]
+
+
+def test_keyword_only_search_accepts_positive_expanded_queries(tmp_path: Path, capsys) -> None:
+    root = tmp_path / "catalog"
+    source = _write_source(tmp_path / "source.xlsx")
+    assert main(["rebuild", "--source", str(source), "--index-root", str(root)]) == 0
+    capsys.readouterr()
+
+    assert main([
+        "search", "--query", "露营灯", "--expanded-query", "户外太阳能灯笼",
+        "--index-root", str(root),
+    ]) == 0
 
 
 def test_installed_console_script_runs_from_unrelated_working_directory(

@@ -26,6 +26,35 @@ class EmbeddingProvider(Protocol):
     def embed(self, texts: Sequence[str]) -> np.ndarray: ...
 
 
+class FastEmbedEmbeddingProvider:
+    """Local BGE embeddings, with the BGE query instruction kept out of documents."""
+
+    model_id = "BAAI/bge-small-zh-v1.5"
+    dimension = 512
+    _QUERY_PREFIX = "为这个句子生成表示以用于检索相关文章："
+
+    def __init__(self, cache_dir: Path) -> None:
+        from fastembed import TextEmbedding
+
+        self._model = TextEmbedding(model_name=self.model_id, cache_dir=str(Path(cache_dir)))
+
+    def _embed(self, texts: Sequence[str]) -> np.ndarray:
+        values = tuple(texts)
+        if not values:
+            return np.empty((0, self.dimension), dtype=np.float32)
+        return np.asarray(list(self._model.embed(values)), dtype=np.float32)
+
+    def embed_documents(self, texts: Sequence[str]) -> np.ndarray:
+        return self._embed(texts)
+
+    def embed_queries(self, texts: Sequence[str]) -> np.ndarray:
+        return self._embed(tuple(self._QUERY_PREFIX + text for text in texts))
+
+    def embed(self, texts: Sequence[str]) -> np.ndarray:
+        """Compatibility with the original document-only provider protocol."""
+        return self.embed_documents(texts)
+
+
 @dataclass(frozen=True)
 class VectorArtifact:
     """A complete matrix plus its durable, stable row mapping."""
@@ -172,8 +201,11 @@ def build_vector_matrix(
         else:
             vectors_by_key[key] = cached
     if misses:
+        embed_documents = getattr(provider, "embed_documents", None)
+        if not callable(embed_documents):
+            embed_documents = provider.embed
         embedded = _validate_provider_vectors(
-            provider.embed(tuple(text_by_key[key] for key in misses)), len(misses), provider.dimension
+            embed_documents(tuple(text_by_key[key] for key in misses)), len(misses), provider.dimension
         )
         for key, vector in zip(misses, embedded, strict=True):
             _atomic_npy(embedding_dir / f"{key}.npy", vector)

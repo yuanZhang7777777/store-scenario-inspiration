@@ -97,8 +97,40 @@ def test_vector_only_results_and_large_limits_use_the_channel_candidate_limit() 
     hits = HybridRetriever(store, index).search(RetrievalQuery("lamp"), np.array([1.0]), limit=6)
 
     assert [(hit.main_sku, hit.sources) for hit in hits] == [("VECTOR", ("vector",))]
-    assert store.calls == [("lamp", 60)]
-    assert index.calls[0][1] == 60
+    assert store.calls == [("lamp", 50)]
+    assert index.calls[0][1] == 50
+
+
+def test_multi_query_search_fuses_primary_and_positive_expansions_with_weighted_rrf() -> None:
+    store = FakeStore(
+        (
+            SearchHit("PRIMARY", 1.0, ("keyword",)),
+            SearchHit("EXPANDED", 0.8, ("keyword",)),
+        ),
+        {sku: document(sku) for sku in ("PRIMARY", "EXPANDED")},
+    )
+    index = FakeIndex(
+        (
+            SearchHit("PRIMARY", 1.0, ("vector",)),
+            SearchHit("EXPANDED", 0.8, ("vector",)),
+        )
+    )
+
+    hits = HybridRetriever(store, index).search(
+        RetrievalQuery("露营椅"),
+        np.array([1.0]),
+        expanded_queries=("户外折叠椅",),
+        expanded_query_vectors=(np.array([2.0]),),
+        limit=20,
+    )
+
+    assert [(hit.main_sku, hit.matched_queries, hit.sources) for hit in hits] == [
+        ("PRIMARY", ("露营椅", "户外折叠椅"), ("keyword", "vector")),
+        ("EXPANDED", ("露营椅", "户外折叠椅"), ("keyword", "vector")),
+    ]
+    assert hits[0].score == pytest.approx(2 / 61 + 1.4 / 61)
+    assert store.calls == [("露营椅", 50), ("户外折叠椅", 50)]
+    assert [call[1] for call in index.calls] == [50, 50]
 
 
 def test_platform_filter_keeps_eligible_children_and_warns_when_platform_missing() -> None:

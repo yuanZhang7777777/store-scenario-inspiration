@@ -102,3 +102,4 @@ class SearchHit:
     sources: tuple[str, ...]
     eligible_child_skus: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
+    matched_queries: tuple[str, ...] = ()
