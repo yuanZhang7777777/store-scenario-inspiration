@@ -19,12 +19,12 @@ E:\download\Chrome下载\产品列表下载20260831093944283.xlsx
 
 ## 构建与更新
 
-从任意工作目录调用已安装的 console script；显式传入源表和索引目录最清晰：
+`--index-root` 的相对路径由命令当前工作目录解析。为避免把 runtime 建到意外位置，请先切到仓库根目录，或始终传绝对路径：
 
 ```powershell
 uv run store-catalog rebuild `
   --source 'E:\download\Chrome下载\产品列表下载20260831093944283.xlsx' `
-  --index-root 'var\catalog'
+  --index-root 'E:\Project\store-scenario-inspiration\.worktrees\catalog-retrieval-foundation\var\catalog'
 ```
 
 如果源文件 SHA-256、document schema version、cleaning rules version 和 embedding model ID 四项都与 active manifest 相同，命令输出 `skipped=true`，不读取工作簿，也不改动版本或指针。任一身份项变化都会新建完整版本。
@@ -34,10 +34,10 @@ uv run store-catalog rebuild `
 1. 读取前计算源文件 SHA-256；
 2. 在 `versions/.staging-*` 中全量重建主 SKU 文档和 SQLite FTS；
 3. 通过 `embedding model ID + vector text hash` 复用未变化文本的 embedding；
-4. 质量检查、源文件二次哈希和制品落盘全部成功后，才原子切换 active pointer；
+4. 质量检查、源文件二次哈希、制品哈希和 SQLite 一致性检查全部成功后，才原子切换 active state；
 5. 失败时 active 版本保持不变，完成但未激活的 orphan 版本不会被检索使用。
 
-当前 CLI 不连接 embedding provider，因此输出 `vector_status=absent`。8,550 级别的商品族可由 SQLite 与可选连续 NumPy 矩阵支持，无需安装或运维独立 vector database。
+当前 CLI 不连接 embedding provider，因此输出 `vector_status=absent`。8,550 级别的商品族可由 SQLite 与可选连续 NumPy 矩阵支持，无需安装或运维独立 vector database。每个 index root 自动采用非阻塞的跨进程 single-writer lock：同时运行第二个 rebuild 或 rollback 会清晰失败；只读的 status 与 search 不加锁。
 
 ## 状态、检索与回滚
 
@@ -75,6 +75,7 @@ uv run python scripts\run_retrieval_benchmark.py `
 var/catalog/
   active.json
   previous.json
+  .writer.lock
   embedding-cache/
     embeddings/*.npy
   versions/<UTC timestamp>-<build identity prefix>/
@@ -82,6 +83,7 @@ var/catalog/
     manifest.json
     quality.json
     delta.json
+    artifacts.json       # catalog、reports 和可选 vector 文件的 SHA-256
     vectors.npy          # 仅 provider build
     vector-rows.json     # 仅 provider build
 ```

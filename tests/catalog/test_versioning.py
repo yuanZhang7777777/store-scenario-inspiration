@@ -124,10 +124,18 @@ def test_rollback_swaps_active_and_previous(tmp_path: Path) -> None:
     manager = CatalogIndexManager(tmp_path / "catalog")
     first = manager.rebuild(source_v1, sheet_name=None, provider=None)
     second = manager.rebuild(source_v2, sheet_name=None, provider=None)
+    assert json.loads((manager.index_root / "active.json").read_text(encoding="utf-8")) == {
+        "version_id": second.version_id,
+        "previous_version_id": first.version_id,
+    }
 
     restored = manager.rollback()
 
     assert restored.version_id == first.version_id
+    assert json.loads((manager.index_root / "active.json").read_text(encoding="utf-8")) == {
+        "version_id": first.version_id,
+        "previous_version_id": second.version_id,
+    }
     assert manager.rollback().version_id == second.version_id
 
 
@@ -278,7 +286,8 @@ def test_active_manifest_rejects_missing_or_corrupt_manifest(tmp_path: Path) -> 
     version_id = "20260831T100000Z-aaaaaaaaaaaa"
     (root / "versions" / version_id).mkdir(parents=True)
     (root / "active.json").write_text(
-        json.dumps({"version_id": version_id}), encoding="utf-8"
+        json.dumps({"version_id": version_id, "previous_version_id": None}),
+        encoding="utf-8",
     )
     manager = CatalogIndexManager(root)
 
@@ -302,14 +311,84 @@ def test_rollback_without_previous_and_identical_pointers_are_explicit_errors(
     with pytest.raises(CatalogIndexError, match="previous pointer does not exist"):
         manager.rollback()
 
-    (manager.index_root / "previous.json").write_text(
-        json.dumps({"version_id": first.version_id}), encoding="utf-8"
+    (manager.index_root / "active.json").write_text(
+        json.dumps(
+            {
+                "version_id": first.version_id,
+                "previous_version_id": first.version_id,
+            }
+        ),
+        encoding="utf-8",
     )
     with pytest.raises(CatalogIndexError, match="identical"):
         manager.rollback()
 
 
-def test_active_pointer_failure_leaves_old_active_and_only_an_orphan_version(
+def test_active_state_failure_preserves_authoritative_pair_and_rollback_chain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_v1 = _write_source(
+        tmp_path / "v1.xlsx", (_row("SKU-1", "MAIN-1", "露营灯"),)
+    )
+    source_v2 = _write_source(
+        tmp_path / "v2.xlsx", (_row("SKU-2", "MAIN-2", "太阳能灯"),)
+    )
+    source_v3 = _write_source(
+        tmp_path / "v3.xlsx", (_row("SKU-3", "MAIN-3", "充电露营灯"),)
+    )
+    manager = CatalogIndexManager(tmp_path / "catalog")
+    first = manager.rebuild(source_v1, sheet_name=None, provider=None)
+    second = manager.rebuild(source_v2, sheet_name=None, provider=None)
+    original_write_state = manager._write_active_state
+
+    def fail_active(state: object) -> None:
+        raise OSError("state unavailable")
+
+    monkeypatch.setattr(manager, "_write_active_state", fail_active)
+    with pytest.raises(OSError, match="state unavailable"):
+        manager.rebuild(source_v3, sheet_name=None, provider=None)
+
+    state = json.loads((manager.index_root / "active.json").read_text(encoding="utf-8"))
+    assert state == {
+        "version_id": second.version_id,
+        "previous_version_id": first.version_id,
+    }
+    monkeypatch.setattr(manager, "_write_active_state", original_write_state)
+    assert manager.rollback().version_id == first.version_id
+    assert len(_version_dirs(manager.index_root)) == 3
+    assert list((manager.index_root / "versions").glob(".staging-*")) == []
+
+
+def test_derived_previous_failure_preserves_pair_and_rollback_chain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sources = tuple(
+        _write_source(
+            tmp_path / f"v{number}.xlsx",
+            (_row(f"SKU-{number}", f"MAIN-{number}", f"露营灯{number}"),),
+        )
+        for number in range(1, 4)
+    )
+    manager = CatalogIndexManager(tmp_path / "catalog")
+    first = manager.rebuild(sources[0], sheet_name=None, provider=None)
+    second = manager.rebuild(sources[1], sheet_name=None, provider=None)
+    original_write_previous = manager._write_derived_previous
+
+    def fail_previous(version_id: str | None) -> None:
+        raise OSError("derived previous unavailable")
+
+    monkeypatch.setattr(manager, "_write_derived_previous", fail_previous)
+    with pytest.raises(OSError, match="derived previous unavailable"):
+        manager.rebuild(sources[2], sheet_name=None, provider=None)
+
+    assert manager.active_manifest() == second
+    state = json.loads((manager.index_root / "active.json").read_text(encoding="utf-8"))
+    assert state["previous_version_id"] == first.version_id
+    monkeypatch.setattr(manager, "_write_derived_previous", original_write_previous)
+    assert manager.rollback().version_id == first.version_id
+
+
+def test_rollback_state_failure_preserves_pair_and_can_be_retried(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source_v1 = _write_source(
@@ -320,20 +399,22 @@ def test_active_pointer_failure_leaves_old_active_and_only_an_orphan_version(
     )
     manager = CatalogIndexManager(tmp_path / "catalog")
     first = manager.rebuild(source_v1, sheet_name=None, provider=None)
-    original_write_pointer = manager._write_pointer
+    second = manager.rebuild(source_v2, sheet_name=None, provider=None)
+    original_state = (manager.index_root / "active.json").read_bytes()
+    original_write_state = manager._write_active_state
+    monkeypatch.setattr(
+        manager,
+        "_write_active_state",
+        lambda state: (_ for _ in ()).throw(OSError("rollback state unavailable")),
+    )
 
-    def fail_active(name: str, version_id: str) -> None:
-        if name == "active":
-            raise OSError("pointer unavailable")
-        original_write_pointer(name, version_id)
+    with pytest.raises(OSError, match="rollback state unavailable"):
+        manager.rollback()
 
-    monkeypatch.setattr(manager, "_write_pointer", fail_active)
-    with pytest.raises(OSError, match="pointer unavailable"):
-        manager.rebuild(source_v2, sheet_name=None, provider=None)
-
-    assert manager.active_manifest() == first
-    assert len(_version_dirs(manager.index_root)) == 2
-    assert list((manager.index_root / "versions").glob(".staging-*")) == []
+    assert (manager.index_root / "active.json").read_bytes() == original_state
+    assert manager.active_manifest() == second
+    monkeypatch.setattr(manager, "_write_active_state", original_write_state)
+    assert manager.rollback().version_id == first.version_id
 
 
 def test_schema_and_storage_failures_clean_staging_and_keep_active(
@@ -425,7 +506,14 @@ def test_source_change_and_report_write_failure_keep_existing_active_and_clean_s
     first = manager.rebuild(first_source, sheet_name=None, provider=None)
     actual_hash = sha256(changed_source.read_bytes()).hexdigest()
     hashes = iter((actual_hash, "f" * 64))
-    monkeypatch.setattr(versioning, "_sha256_file", lambda path: next(hashes))
+    original_sha256_file = versioning._sha256_file
+
+    def source_hash_only(path: Path) -> str:
+        if Path(path) == changed_source:
+            return next(hashes)
+        return original_sha256_file(path)
+
+    monkeypatch.setattr(versioning, "_sha256_file", source_hash_only)
 
     with pytest.raises(CatalogIndexError, match="changed during"):
         manager.rebuild(changed_source, sheet_name=None, provider=None)
@@ -472,9 +560,91 @@ def test_build_identity_is_canonical_and_final_version_never_contains_source_wor
 
     assert manifest.version_id.endswith(f"-{expected_identity[:12]}")
     assert {path.name for path in version_dir.iterdir()} == {
+        "artifacts.json",
         "catalog.sqlite3",
         "delta.json",
         "manifest.json",
         "quality.json",
     }
     assert source.read_bytes().startswith(b"PK")
+
+
+def test_second_manager_writer_is_rejected_until_process_lock_is_released(
+    tmp_path: Path,
+) -> None:
+    source_v1 = _write_source(
+        tmp_path / "v1.xlsx", (_row("SKU-1", "MAIN-1", "露营灯"),)
+    )
+    source_v2 = _write_source(
+        tmp_path / "v2.xlsx", (_row("SKU-2", "MAIN-2", "太阳能灯"),)
+    )
+    root = tmp_path / "catalog"
+    first_manager = CatalogIndexManager(root)
+    second_manager = CatalogIndexManager(root)
+    first_manager.rebuild(source_v1, sheet_name=None, provider=None)
+
+    with first_manager._writer_lock():
+        with pytest.raises(CatalogIndexError, match="writer lock"):
+            second_manager.rebuild(source_v2, sheet_name=None, provider=None)
+
+    second = second_manager.rebuild(source_v2, sheet_name=None, provider=None)
+    assert second_manager.active_manifest() == second
+
+
+def test_active_validation_rejects_tampered_complete_artifacts(tmp_path: Path) -> None:
+    source = _write_source(
+        tmp_path / "source.xlsx", (_row("SKU-1", "MAIN-1", "露营灯"),)
+    )
+    manager = CatalogIndexManager(tmp_path / "catalog")
+    manifest = manager.rebuild(source, sheet_name=None, provider=None)
+    version = manager.index_root / "versions" / manifest.version_id
+
+    artifacts = json.loads((version / "artifacts.json").read_text(encoding="utf-8"))
+    assert set(artifacts) == {
+        "catalog.sqlite3",
+        "manifest.json",
+        "quality.json",
+        "delta.json",
+    }
+    (version / "quality.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(CatalogIndexError, match="artifact hash mismatch"):
+        manager.active_manifest()
+
+
+def test_active_validation_rejects_sqlite_manifest_and_count_tampering(tmp_path: Path) -> None:
+    source = _write_source(
+        tmp_path / "source.xlsx", (_row("SKU-1", "MAIN-1", "露营灯"),)
+    )
+    manager = CatalogIndexManager(tmp_path / "catalog")
+    manifest = manager.rebuild(source, sheet_name=None, provider=None)
+    version = manager.index_root / "versions" / manifest.version_id
+    import sqlite3
+
+    with sqlite3.connect(version / "catalog.sqlite3") as connection:
+        connection.execute("DELETE FROM children")
+    # Re-sign only the modified SQLite: relational validation must still reject it.
+    artifacts_path = version / "artifacts.json"
+    artifacts = json.loads(artifacts_path.read_text(encoding="utf-8"))
+    artifacts["catalog.sqlite3"] = sha256((version / "catalog.sqlite3").read_bytes()).hexdigest()
+    artifacts_path.write_text(json.dumps(artifacts), encoding="utf-8")
+
+    with pytest.raises(CatalogIndexError, match="child count"):
+        manager.active_manifest()
+
+
+def test_active_validation_rejects_resigned_invalid_delta_schema(tmp_path: Path) -> None:
+    source = _write_source(
+        tmp_path / "source.xlsx", (_row("SKU-1", "MAIN-1", "露营灯"),)
+    )
+    manager = CatalogIndexManager(tmp_path / "catalog")
+    manifest = manager.rebuild(source, sheet_name=None, provider=None)
+    version = manager.index_root / "versions" / manifest.version_id
+    (version / "delta.json").write_text('{"metrics":{}}', encoding="utf-8")
+    artifacts_path = version / "artifacts.json"
+    artifacts = json.loads(artifacts_path.read_text(encoding="utf-8"))
+    artifacts["delta.json"] = sha256((version / "delta.json").read_bytes()).hexdigest()
+    artifacts_path.write_text(json.dumps(artifacts), encoding="utf-8")
+
+    with pytest.raises(CatalogIndexError, match="delta report"):
+        manager.active_manifest()

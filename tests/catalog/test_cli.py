@@ -8,6 +8,7 @@ import sys
 from openpyxl import Workbook
 
 from store_scenario_inspiration.catalog.cli import main
+import store_scenario_inspiration.catalog.cli as cli
 
 
 HEADERS = (
@@ -138,6 +139,17 @@ def test_rebuild_failure_is_nonzero_and_explicitly_keeps_previous_active(
     assert "Traceback" not in error.err
     assert main(["status", "--index-root", str(root)]) == 0
     assert _lines(capsys.readouterr().out)["active_version"] == first
+
+
+def test_rebuild_output_failure_does_not_claim_the_old_version_is_active(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    source = _write_source(tmp_path / "source.xlsx")
+    monkeypatch.setattr(cli, "_print_active", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("output failed")))
+
+    assert main(["rebuild", "--source", str(source), "--index-root", str(tmp_path / "catalog")]) != 0
+
+    assert "new version may already be active; run status" in capsys.readouterr().err
 
 
 def test_status_without_active_is_clean_but_invalid_searches_are_nonzero(

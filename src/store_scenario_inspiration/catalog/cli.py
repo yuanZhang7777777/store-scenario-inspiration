@@ -100,8 +100,15 @@ def _print_active(
 
 def _rebuild(args: argparse.Namespace) -> int:
     manager = CatalogIndexManager(args.index_root)
-    manifest = manager.rebuild(args.source, sheet_name=args.sheet, provider=None)
-    _print_active(manager, manifest, skipped=manager.last_rebuild_skipped)
+    try:
+        manifest = manager.rebuild(args.source, sheet_name=args.sheet, provider=None)
+    except Exception:
+        print("previous index remains active", file=sys.stderr)
+        raise
+    try:
+        _print_active(manager, manifest, skipped=manager.last_rebuild_skipped)
+    except Exception as error:
+        raise CatalogIndexError("new version may already be active; run status") from error
     return 0
 
 
@@ -172,6 +179,4 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise ValueError(f"unknown command: {command}")
     except Exception as error:
         print(f"error={error}", file=sys.stderr)
-        if command == "rebuild":
-            print("previous index remains active", file=sys.stderr)
         return 1
