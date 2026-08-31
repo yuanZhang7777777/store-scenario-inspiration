@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import tempfile
 from collections.abc import Iterable, Sequence
@@ -43,6 +44,7 @@ CREATE VIRTUAL TABLE product_fts USING fts5(
     en_aliases
 );
 """
+_CJK_SEGMENT = re.compile(r"[\u4e00-\u9fff]+")
 
 
 def _json(value: object) -> str:
@@ -78,8 +80,30 @@ def _manifest_from_json(value: str) -> BuildManifest:
     return BuildManifest(**json.loads(value))
 
 
+def _cjk_index_tokens(values: Iterable[str]) -> tuple[str, ...]:
+    """Add CJK unigrams/bigrams without repeating an original CJK token."""
+
+    native_terms = {
+        segment for value in values for segment in _CJK_SEGMENT.findall(value)
+    }
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        for segment in _CJK_SEGMENT.findall(value):
+            for token in (*segment, *(segment[index : index + 2] for index in range(len(segment) - 1))):
+                if token not in seen and token not in native_terms:
+                    seen.add(token)
+                    tokens.append(token)
+    return tuple(tokens)
+
+
 def _fts_text(values: Iterable[str]) -> str:
-    """Store each normalized field value once, followed by its safe tokens."""
+    """Store normalized originals plus CJK-only index assistance.
+
+    Unicode61 already tokenizes English and alphanumeric text, so duplicating
+    those terms would distort FTS term frequency. Chinese needs explicit
+    unigrams and bigrams for the query-side ``keyword_tokens`` contract.
+    """
 
     originals: list[str] = []
     seen: set[str] = set()
@@ -88,15 +112,21 @@ def _fts_text(values: Iterable[str]) -> str:
         if normalized and normalized not in seen:
             seen.add(normalized)
             originals.append(normalized)
-    return " ".join((*originals, *keyword_tokens(" ".join(originals))))
+    return " ".join((*originals, *_cjk_index_tokens(originals)))
 
 
 class CatalogStore:
     """Own one SQLite connection; callers must close it or use a context manager."""
 
     def __init__(self, connection: sqlite3.Connection, manifest: BuildManifest) -> None:
-        self.connection = connection
+        self._connection: sqlite3.Connection | None = connection
         self.manifest = manifest
+
+    @property
+    def connection(self) -> sqlite3.Connection:
+        """Expose the live connection for low-level diagnostics only."""
+
+        return self._require_connection()
 
     def __enter__(self) -> CatalogStore:
         return self
@@ -107,9 +137,14 @@ class CatalogStore:
     def close(self) -> None:
         """Release the owned SQLite connection; repeated close calls are harmless."""
 
-        if self.connection is not None:
-            self.connection.close()
-            self.connection = None  # type: ignore[assignment]
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
+
+    def _require_connection(self) -> sqlite3.Connection:
+        if self._connection is None:
+            raise RuntimeError("catalog store is closed")
+        return self._connection
 
     @classmethod
     def create(
@@ -121,6 +156,8 @@ class CatalogStore:
         """Create a complete new catalog atomically without replacing an existing file."""
 
         target = Path(path)
+        if manifest.document_count != len(documents):
+            raise ValueError("manifest document_count must equal the documents length")
         if target.exists():
             raise FileExistsError(f"catalog already exists: {target}")
         if not target.parent.exists():
@@ -216,7 +253,7 @@ class CatalogStore:
         identity = normalize_compare(main_sku)
         if not identity:
             return None
-        row = self.connection.execute(
+        row = self._require_connection().execute(
             "SELECT document_json FROM documents WHERE main_sku = ?", (identity,)
         ).fetchone()
         return None if row is None else _document_from_json(row[0])
@@ -232,7 +269,7 @@ class CatalogStore:
         # Every token is separately quoted. OR keeps partial query evidence useful
         # while eliminating FTS operators, phrases, columns, and punctuation syntax.
         match_query = " OR ".join(f'"{token.replace(chr(34), chr(34) * 2)}"' for token in tokens)
-        rows = self.connection.execute(
+        rows = self._require_connection().execute(
             """SELECT main_sku, -bm25(product_fts, 0.0, 8.0, 4.0, 1.0) AS score
                FROM product_fts
                WHERE product_fts MATCH ?
