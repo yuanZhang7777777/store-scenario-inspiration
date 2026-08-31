@@ -8,6 +8,11 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+
+SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
 from store_scenario_inspiration.catalog.benchmark import load_benchmark, run_benchmark
 from store_scenario_inspiration.catalog.models import SearchHit
 
@@ -21,7 +26,6 @@ DEFAULT_BENCHMARK_PATH = (
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--benchmark", type=Path, default=DEFAULT_BENCHMARK_PATH)
-    parser.add_argument("--top-k", type=int, default=5)
     return parser
 
 
@@ -37,7 +41,7 @@ def main(argv: Sequence[str] | None = None, search_fn: SearchFunction | None = N
         print("search dependency is not wired; supply a search_fn programmatically", file=sys.stderr)
         return 2
 
-    report = run_benchmark(search_fn, load_benchmark(args.benchmark), top_k=args.top_k)
+    report = run_benchmark(search_fn, load_benchmark(args.benchmark))
     print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
     return 1 if report.enforced and report.passes_threshold is False else 0
 

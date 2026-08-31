@@ -13,6 +13,7 @@ from .models import SearchHit
 EXPECTED_STATUSES = frozenset({"has_match", "no_reliable_match"})
 LABEL_STATUSES = frozenset({"provisional", "confirmed"})
 HIT_AT_5_THRESHOLD = 0.75
+HIT_AT_5_LIMIT = 5
 _ITEM_FIELDS = frozenset(
     {
         "query_id",
@@ -170,26 +171,34 @@ def run_benchmark(
 ) -> BenchmarkReport:
     """Evaluate a search function without imposing process-level exit behavior."""
 
-    if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k < 1:
-        raise ValueError("top_k must be a positive integer")
+    if type(top_k) is not int or top_k != HIT_AT_5_LIMIT:
+        raise ValueError("top_k must be fixed at 5 for Hit@5")
 
     results: list[BenchmarkResult] = []
     for item in items:
-        returned_main_skus = tuple(hit.main_sku for hit in search_fn(item.query, top_k))
+        returned_main_skus: list[str] = []
+        seen_main_skus: set[str] = set()
+        for hit in search_fn(item.query, top_k)[:HIT_AT_5_LIMIT]:
+            if hit.main_sku not in seen_main_skus:
+                seen_main_skus.add(hit.main_sku)
+                returned_main_skus.append(hit.main_sku)
+        immutable_returned_main_skus = tuple(returned_main_skus)
         relevant_skus = set(item.relevant_main_skus)
         matched_relevant_main_skus = tuple(
-            main_sku for main_sku in returned_main_skus if main_sku in relevant_skus
+            main_sku
+            for main_sku in immutable_returned_main_skus
+            if main_sku in relevant_skus
         )
         is_hit = (
             bool(matched_relevant_main_skus)
             if item.expected_status == "has_match"
-            else not returned_main_skus
+            else not immutable_returned_main_skus
         )
         results.append(
             BenchmarkResult(
                 query_id=item.query_id,
                 expected_status=item.expected_status,
-                returned_main_skus=returned_main_skus,
+                returned_main_skus=immutable_returned_main_skus,
                 matched_relevant_main_skus=matched_relevant_main_skus,
                 is_hit=is_hit,
             )

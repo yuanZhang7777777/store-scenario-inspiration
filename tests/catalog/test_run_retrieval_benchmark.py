@@ -3,6 +3,10 @@ from __future__ import annotations
 import json
 import importlib.util
 from pathlib import Path
+import subprocess
+import sys
+
+import pytest
 
 
 _SCRIPT_PATH = Path(__file__).parents[2] / "scripts" / "run_retrieval_benchmark.py"
@@ -58,3 +62,27 @@ def test_cli_has_a_minimal_unwired_store_entrypoint(capsys) -> None:
 
     assert exit_code == 2
     assert "search dependency" in capsys.readouterr().err
+
+
+def test_cli_rejects_top_k_configuration(capsys) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--top-k", "1"], search_fn=lambda query, top_k: ())
+
+    assert exit_info.value.code == 2
+    assert "unrecognized arguments" in capsys.readouterr().err
+
+
+def test_cli_script_bootstraps_local_src_from_an_unrelated_working_directory(
+    tmp_path: Path,
+) -> None:
+    result = subprocess.run(
+        [sys.executable, "-S", str(_SCRIPT_PATH)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "search dependency" in result.stderr
+    assert "Traceback" not in result.stderr
