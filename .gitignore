@@ -1,2 +1,6 @@
 .analysis-work/
 .worktrees/
+var/
+.pytest_cache/
+__pycache__/
+.venv/
