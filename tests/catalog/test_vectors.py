@@ -4,6 +4,7 @@ import json
 from dataclasses import replace
 from pathlib import Path
 from typing import Sequence
+import warnings
 
 import numpy as np
 import pytest
@@ -93,6 +94,43 @@ def test_bad_or_wrong_dimension_cache_is_a_miss_not_a_result(
     assert len(provider.calls) == 3
 
 
+@pytest.mark.parametrize(
+    "bad_cache",
+    [
+        np.ones((3,), dtype=np.float64),
+        np.ones((3,), dtype=np.int32),
+        np.asarray([1, np.inf, 1], dtype=np.float32),
+    ],
+)
+def test_noncanonical_or_nonfinite_cache_is_recomputed_and_overwritten_as_float32(
+    tmp_path: Path, documents: tuple[ProductFamilyDocument, ...], bad_cache: np.ndarray
+) -> None:
+    provider = RecordingProvider()
+    cache = tmp_path / "cache"
+    build_vector_matrix((documents[0],), provider, cache)
+    cached = next((cache / "embeddings").glob("*.npy"))
+    np.save(cached, bad_cache)
+
+    build_vector_matrix((documents[0],), provider, cache)
+
+    assert provider.calls == [("商品名称：户外灯",), ("商品名称：户外灯",)]
+    reloaded = np.load(cached, allow_pickle=False)
+    assert reloaded.dtype == np.dtype(np.float32)
+    assert np.isfinite(reloaded).all()
+
+
+def test_normalized_blank_vector_text_is_not_embedded(
+    tmp_path: Path, documents: tuple[ProductFamilyDocument, ...]
+) -> None:
+    provider = RecordingProvider()
+    blank = replace(documents[0], vector_text_v1=" \t\n ")
+
+    artifact = build_vector_matrix((blank,), provider, tmp_path / "cache")
+
+    assert provider.calls == []
+    assert artifact.matrix.shape == (0, provider.dimension)
+
+
 def test_vector_build_rejects_duplicate_identities_and_invalid_provider_outputs(
     tmp_path: Path, documents: tuple[ProductFamilyDocument, ...]
 ) -> None:
@@ -132,6 +170,29 @@ def test_exact_vector_search_normalizes_once_and_orders_ties_by_main_sku(tmp_pat
         ("A", 1.0, ("vector",)), ("B", 1.0, ("vector",)),
         ("ZERO", 0.5, ("vector",)), ("NEG", 0.0, ("vector",)),
     ]
+
+
+def test_exact_vector_search_handles_float32_max_without_overflow_or_nan(tmp_path: Path) -> None:
+    matrix_path = tmp_path / "vectors.npy"
+    rows_path = tmp_path / "rows.json"
+    fmax = np.finfo(np.float32).max
+    np.save(
+        matrix_path,
+        np.asarray([[fmax, fmax], [fmax, fmax], [-fmax, -fmax], [fmax, -fmax]], dtype=np.float32),
+    )
+    rows_path.write_text(json.dumps(["B", "A", "NEG", "ORTH"]), encoding="utf-8")
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        index = ExactVectorIndex.load(matrix_path, rows_path)
+        hits = index.search(np.asarray([fmax, fmax], dtype=np.float32), limit=4)
+
+    assert index._normalized_matrix.dtype == np.dtype(np.float32)
+    assert np.isfinite(index._normalized_matrix).all()
+    assert [hit.main_sku for hit in hits] == ["A", "B", "ORTH", "NEG"]
+    assert hits[0].score == pytest.approx(1.0)
+    assert hits[2].score == pytest.approx(0.5)
+    assert hits[3].score == pytest.approx(0.0, abs=1e-6)
 
 
 @pytest.mark.parametrize("query", [np.asarray([[1, 0]], dtype=np.float32), np.asarray([1, np.nan]), np.asarray([0, 0]), np.asarray([1, 2, 3])])

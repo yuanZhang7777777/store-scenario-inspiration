@@ -80,9 +80,11 @@ def _atomic_json(path: Path, value: object) -> None:
 def _cached_embedding(path: Path, dimension: int) -> np.ndarray | None:
     try:
         candidate = np.load(path, allow_pickle=False)
-        vector = np.asarray(candidate, dtype=np.float32)
     except (OSError, ValueError, EOFError):
         return None
+    if candidate.dtype != np.dtype(np.float32):
+        return None
+    vector = np.asarray(candidate)
     if vector.shape != (dimension,) or not np.isfinite(vector).all():
         return None
     return vector
@@ -126,7 +128,7 @@ def _ordered_documents(
             (
                 document
                 for document in materialized
-                if document.searchable and document.vector_text_v1
+                if document.searchable and normalize_compare(document.vector_text_v1)
             ),
             key=lambda document: (normalize_compare(document.main_sku), document.main_sku),
         )
@@ -213,8 +215,11 @@ class ExactVectorIndex:
             raise ValueError("vector matrix row count must match vector rows")
         if len(set(rows)) != len(rows):
             raise ValueError("vector rows contain duplicate IDs")
-        norms = np.linalg.norm(matrix, axis=1, keepdims=True)
-        normalized = np.divide(matrix, norms, out=np.zeros_like(matrix), where=norms != 0)
+        matrix64 = matrix.astype(np.float64)
+        norms = np.linalg.norm(matrix64, axis=1, keepdims=True)
+        normalized = np.divide(
+            matrix64, norms, out=np.zeros_like(matrix64), where=norms != 0
+        ).astype(np.float32)
         return cls(normalized, rows)
 
     def search(self, query_vector: np.ndarray, limit: int) -> tuple[SearchHit, ...]:
@@ -230,10 +235,12 @@ class ExactVectorIndex:
             raise ValueError(f"query vector dimension must be {self.dimension}")
         if not np.isfinite(query).all():
             raise ValueError("query vector must contain only finite values")
-        query_norm = float(np.linalg.norm(query))
+        query64 = query.astype(np.float64)
+        query_norm = float(np.linalg.norm(query64))
         if query_norm == 0:
             raise ValueError("query vector must have a non-zero norm")
-        similarities = self._normalized_matrix @ (query / query_norm)
+        normalized_query = (query64 / query_norm).astype(np.float32)
+        similarities = self._normalized_matrix @ normalized_query
         order = sorted(range(len(self._rows)), key=lambda index: (-float(similarities[index]), self._rows[index]))
         return tuple(
             SearchHit(
