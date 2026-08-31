@@ -78,6 +78,8 @@ def _print_active(
     pairs: list[tuple[str, object]] = [
         ("active_version", manifest.version_id),
         ("source_sha256", manifest.source_sha256),
+        ("source_sheet_name", manifest.source_sheet_name),
+        ("source_modified_at", manifest.source_modified_at),
         ("source_rows", quality.source_row_count),
         ("documents", manifest.document_count),
         ("children", quality.child_count),

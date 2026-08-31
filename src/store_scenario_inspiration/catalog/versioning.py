@@ -21,7 +21,7 @@ from .vectors import EmbeddingProvider, ExactVectorIndex, build_vector_matrix
 from .workbook import iter_source_rows
 
 
-DOCUMENT_SCHEMA_VERSION = "1"
+DOCUMENT_SCHEMA_VERSION = "2"
 CLEANING_RULES_VERSION = "1"
 NO_EMBEDDING_MODEL_ID = "none"
 
@@ -68,17 +68,35 @@ def _build_identity(
     schema_version: str,
     cleaning_rules_version: str,
     embedding_model_id: str,
+    source_sheet_name: str | None = None,
+    source_modified_at: str = "",
 ) -> str:
     payload = {
         "cleaning_rules_version": cleaning_rules_version,
         "embedding_model_id": embedding_model_id,
         "schema_version": schema_version,
         "source_sha256": source_sha256,
+        "source_modified_at": source_modified_at,
+        "source_sheet_name": source_sheet_name,
     }
     encoded = json.dumps(
         payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
     return sha256(encoded).hexdigest()
+
+
+def _source_modified_at(path: Path) -> str:
+    moment = datetime.fromtimestamp(Path(path).stat().st_mtime, UTC)
+    return moment.isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+def _is_utc_iso_timestamp(value: object) -> bool:
+    if not isinstance(value, str) or not value.endswith("Z"):
+        return False
+    try:
+        return datetime.fromisoformat(value[:-1] + "+00:00").tzinfo == UTC
+    except ValueError:
+        return False
 
 
 def _write_json_fsync(path: Path, payload: object) -> None:
@@ -189,6 +207,7 @@ class CatalogIndexManager:
             "embedding_model_id",
             "built_at",
             "vector_status",
+            "source_modified_at",
         )
         if any(not isinstance(getattr(manifest, name), str) for name in string_fields):
             raise CatalogIndexError(f"catalog manifest contains invalid values: {path}")
@@ -198,6 +217,12 @@ class CatalogIndexManager:
             (manifest.schema_version, manifest.cleaning_rules_version, manifest.embedding_model_id)
         ):
             raise CatalogIndexError(f"catalog manifest identity is incomplete: {path}")
+        if (
+            not isinstance(manifest.source_sheet_name, str | type(None))
+            or not _is_utc_iso_timestamp(manifest.source_modified_at)
+            or not _is_utc_iso_timestamp(manifest.built_at)
+        ):
+            raise CatalogIndexError(f"catalog manifest contains invalid values: {path}")
         if (
             not isinstance(manifest.document_count, int)
             or isinstance(manifest.document_count, bool)
@@ -210,6 +235,8 @@ class CatalogIndexManager:
             manifest.schema_version,
             manifest.cleaning_rules_version,
             manifest.embedding_model_id,
+            manifest.source_sheet_name,
+            manifest.source_modified_at,
         )
         if not manifest.version_id.endswith(f"-{identity[:12]}"):
             raise CatalogIndexError(f"catalog manifest build identity is invalid: {path}")
@@ -488,12 +515,16 @@ class CatalogIndexManager:
         schema_version: str,
         cleaning_rules_version: str,
         embedding_model_id: str,
+        source_sheet_name: str | None,
+        source_modified_at: str,
     ) -> bool:
         return (
             manifest.source_sha256 == source_sha256
             and manifest.schema_version == schema_version
             and manifest.cleaning_rules_version == cleaning_rules_version
             and manifest.embedding_model_id == embedding_model_id
+            and manifest.source_sheet_name == source_sheet_name
+            and manifest.source_modified_at == source_modified_at
         )
 
     def rebuild(
@@ -519,6 +550,7 @@ class CatalogIndexManager:
 
         source_path = Path(source)
         source_sha256 = _sha256_file(source_path)
+        source_modified_at = _source_modified_at(source_path)
         active = self.active_manifest()
         if active is not None and self._same_build(
             active,
@@ -526,6 +558,8 @@ class CatalogIndexManager:
             schema_version=DOCUMENT_SCHEMA_VERSION,
             cleaning_rules_version=CLEANING_RULES_VERSION,
             embedding_model_id=model_id,
+            source_sheet_name=sheet_name,
+            source_modified_at=source_modified_at,
         ):
             self.last_rebuild_skipped = True
             return active
@@ -536,6 +570,8 @@ class CatalogIndexManager:
             DOCUMENT_SCHEMA_VERSION,
             CLEANING_RULES_VERSION,
             model_id,
+            sheet_name,
+            source_modified_at,
         )
         version_id, built_at = self._next_version(identity)
         self.versions_dir.mkdir(parents=True, exist_ok=True)
@@ -557,6 +593,8 @@ class CatalogIndexManager:
                 built_at=built_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 document_count=len(documents),
                 vector_status="absent" if provider is None else "present",
+                source_sheet_name=sheet_name,
+                source_modified_at=source_modified_at,
             )
 
             with CatalogStore.create(staging / "catalog.sqlite3", documents, manifest):
@@ -579,7 +617,10 @@ class CatalogIndexManager:
             _write_json_fsync(staging / "quality.json", _quality_payload(quality))
             _write_json_fsync(staging / "delta.json", _delta_payload(delta))
 
-            if _sha256_file(source_path) != source_sha256:
+            if (
+                _sha256_file(source_path) != source_sha256
+                or _source_modified_at(source_path) != source_modified_at
+            ):
                 raise CatalogIndexError("source workbook changed during catalog rebuild")
 
             self._write_artifacts(staging, manifest)

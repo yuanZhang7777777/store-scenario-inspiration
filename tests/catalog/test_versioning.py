@@ -14,6 +14,7 @@ import pytest
 from openpyxl import Workbook
 
 from store_scenario_inspiration.catalog.quality import QualityGateError
+from store_scenario_inspiration.catalog.storage import CatalogStore
 from store_scenario_inspiration.catalog.versioning import (
     CLEANING_RULES_VERSION,
     DOCUMENT_SCHEMA_VERSION,
@@ -45,6 +46,21 @@ def _write_source(path: Path, rows: tuple[tuple[str, ...], ...]) -> Path:
     worksheet.append(HEADERS)
     for row in rows:
         worksheet.append(row)
+    workbook.save(path)
+    return path
+
+
+def _write_two_sheet_source(path: Path) -> Path:
+    workbook = Workbook()
+    first = workbook.active
+    first.title = "Sheet A"
+    second = workbook.create_sheet("Sheet B")
+    for sheet, row in (
+        (first, _row("A-CHILD", "A-MAIN", "A款露营灯")),
+        (second, _row("B-CHILD", "B-MAIN", "B款太阳能灯")),
+    ):
+        sheet.append(HEADERS)
+        sheet.append(row)
     workbook.save(path)
     return path
 
@@ -167,6 +183,38 @@ def test_unchanged_build_skips_without_reading_workbook_or_changing_index(
     assert json.loads((version / "quality.json").read_text(encoding="utf-8"))["errors"] == []
 
 
+def test_sheet_selector_is_part_of_build_identity_and_manifest(tmp_path: Path) -> None:
+    source = _write_two_sheet_source(tmp_path / "two-sheets.xlsx")
+    manager = CatalogIndexManager(tmp_path / "catalog")
+
+    sheet_a = manager.rebuild(source, sheet_name="Sheet A", provider=None)
+    sheet_b = manager.rebuild(source, sheet_name="Sheet B", provider=None)
+    repeated_b = manager.rebuild(source, sheet_name="Sheet B", provider=None)
+
+    assert sheet_a.source_sheet_name == "Sheet A"
+    assert sheet_b.source_sheet_name == "Sheet B"
+    assert sheet_b.source_modified_at.endswith("Z")
+    assert sheet_b.version_id != sheet_a.version_id
+    assert manager.last_rebuild_skipped is True
+    assert repeated_b == sheet_b
+    with CatalogStore.open_readonly(manager.active_store_path()) as store:
+        assert store.get_document("B-MAIN") is not None
+        assert store.get_document("A-MAIN") is None
+
+
+def test_auto_sheet_selector_is_recorded_as_none(tmp_path: Path) -> None:
+    source = _write_source(
+        tmp_path / "source.xlsx", (_row("SKU-1", "MAIN-1", "露营灯"),)
+    )
+
+    manifest = CatalogIndexManager(tmp_path / "catalog").rebuild(
+        source, sheet_name=None, provider=None
+    )
+
+    assert manifest.source_sheet_name is None
+    assert manifest.source_modified_at.endswith("Z")
+
+
 def test_schema_cleaning_rule_and_embedding_model_identity_changes_force_rebuild(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -176,7 +224,7 @@ def test_schema_cleaning_rule_and_embedding_model_identity_changes_force_rebuild
     manager = CatalogIndexManager(tmp_path / "catalog")
     first = manager.rebuild(source, sheet_name=None, provider=None)
 
-    monkeypatch.setattr(versioning, "DOCUMENT_SCHEMA_VERSION", "2")
+    monkeypatch.setattr(versioning, "DOCUMENT_SCHEMA_VERSION", "3")
     schema_changed = manager.rebuild(source, sheet_name=None, provider=None)
     monkeypatch.setattr(versioning, "CLEANING_RULES_VERSION", "2")
     rules_changed = manager.rebuild(source, sheet_name=None, provider=None)
@@ -184,7 +232,7 @@ def test_schema_cleaning_rule_and_embedding_model_identity_changes_force_rebuild
     vector_build = manager.rebuild(source, sheet_name=None, provider=provider)
 
     assert schema_changed.version_id != first.version_id
-    assert schema_changed.schema_version == "2"
+    assert schema_changed.schema_version == "3"
     assert rules_changed.version_id != schema_changed.version_id
     assert rules_changed.cleaning_rules_version == "2"
     assert vector_build.version_id != rules_changed.version_id
@@ -260,6 +308,8 @@ def test_existing_same_second_version_id_advances_without_sleep(
         DOCUMENT_SCHEMA_VERSION,
         CLEANING_RULES_VERSION,
         "none",
+        None,
+        versioning._source_modified_at(source),
     )
     collision = root / "versions" / f"20260831T100000Z-{identity[:12]}"
     collision.mkdir(parents=True)
@@ -553,6 +603,8 @@ def test_build_identity_is_canonical_and_final_version_never_contains_source_wor
             "embedding_model_id": "none",
             "schema_version": DOCUMENT_SCHEMA_VERSION,
             "source_sha256": sha256(source.read_bytes()).hexdigest(),
+            "source_modified_at": manifest.source_modified_at,
+            "source_sheet_name": None,
         },
         ensure_ascii=True,
         sort_keys=True,

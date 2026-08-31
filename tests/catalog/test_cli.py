@@ -74,6 +74,8 @@ def test_rebuild_status_search_skip_and_rollback_commands(
     assert first_output["children"] == "1"
     assert first_output["quality_errors"] == "0"
     assert first_output["vector_status"] == "absent"
+    assert first_output["source_sheet_name"] == "none"
+    assert first_output["source_modified_at"].endswith("Z")
     assert first_output["skipped"] == "false"
     first_version = first_output["active_version"]
 

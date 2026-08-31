@@ -27,7 +27,7 @@ uv run store-catalog rebuild `
   --index-root 'E:\Project\store-scenario-inspiration\.worktrees\catalog-retrieval-foundation\var\catalog'
 ```
 
-如果源文件 SHA-256、document schema version、cleaning rules version 和 embedding model ID 四项都与 active manifest 相同，命令输出 `skipped=true`，不读取工作簿，也不改动版本或指针。任一身份项变化都会新建完整版本。
+只有源文件 SHA-256、源文件 UTC 更新时间、所选 sheet（自动选择为 `none`）、document schema version、cleaning rules version 和 embedding model ID 都与 active manifest 相同，命令才输出 `skipped=true`。任一身份项变化都会新建完整版本，因此同一工作簿切换 Sheet A/Sheet B 不会错误跳过。
 
 产品列表更新采用“全量文档重建 + embedding cache 复用”，而不是维护脆弱的行级增量状态：
 
@@ -56,6 +56,8 @@ uv run store-catalog rollback --index-root 'var\catalog'
 ```
 
 `search` 以只读方式打开 active SQLite，使用 `HybridRetriever` 的 keyword-only 路径，并保留平台级子 SKU 风险过滤。`rollback` 交换 active 与 previous，因此再次执行可回到刚才的版本。没有 previous 或两个指针相同会明确报错。
+
+`status` 和 `rebuild` 都输出 `source_sheet_name` 与 `source_modified_at`，用于核对实际读取的工作表与源文件更新时间。
 
 ## Keyword baseline
 

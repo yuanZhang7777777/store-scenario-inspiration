@@ -219,6 +219,23 @@ def test_quality_report_includes_required_metrics() -> None:
     assert report.warnings
 
 
+def test_semantic_document_collisions_ignore_identity_and_child_metadata() -> None:
+    rows = (
+        _row("A-CHILD", "A-MAIN", "同款露营灯"),
+        _row("B-CHILD", "B-MAIN", "同款露营灯"),
+    )
+    first, second = build_documents(rows)
+    report = validate_build(rows, (first, second))
+
+    assert report.exact_document_collision_count == 1
+    assert "exact document collisions: 1" in report.warnings
+    assert report.canonical_document_sha256 != validate_build(
+        (_row("A-CHILD", "A-MAIN", "同款露营灯"),), (first,)
+    ).canonical_document_sha256
+    changed = validate_build(rows, (first, replace(second, cn_names=("不同商品名",))))
+    assert changed.exact_document_collision_count == 0
+
+
 def test_compare_quality_handles_no_previous_and_zero_percentage_denominator() -> None:
     empty = QualityReport.empty()
     current = validate_build((_row("SKU-1", "MAIN-1", "露营灯"),), build_documents((_row("SKU-1", "MAIN-1", "露营灯"),)))

@@ -670,9 +670,9 @@ Expected: FAIL because `CatalogIndexManager` does not exist.
 
 - [ ] **Step 3: Implement staged version creation**
 
-Calculate source SHA-256 before reading. Skip only when source hash, document schema version, cleaning-rules version, and embedding model ID all equal the active manifest; a code-rule or model change must rebuild even when Excel is unchanged. Otherwise build under `versions/.staging-<uuid>`, write SQLite, optional vectors, manifest, and quality report, fsync files, rename the staging directory to its final version ID, then replace `active.json` through `active.json.tmp` using `os.replace`. Update `previous.json` only after the new version directory is complete.
+Calculate source SHA-256 and UTC modification time before reading. Skip only when source hash, modification time, exact requested sheet selector (or auto/null), document schema version, cleaning-rules version, and embedding model ID all equal the active manifest; a code-rule, model, or sheet change must rebuild even when Excel bytes are unchanged. Otherwise build under `versions/.staging-<uuid>`, write SQLite, optional vectors, manifest, and quality report, fsync files, rename the staging directory to its final version ID, then replace `active.json` through `active.json.tmp` using `os.replace`. Update `previous.json` only after the new version directory is complete.
 
-Build identity is SHA-256 of source hash, schema version, cleaning-rules version, and embedding model ID. Version ID format is UTC `YYYYMMDDTHHMMSSZ-<first 12 build-identity characters>`. A provider-free build uses embedding model ID `none`, is valid, and reports `vector_status="absent"`; this allows the keyword baseline to be measured before choosing a real embedding provider.
+Build identity is SHA-256 of source hash, source UTC modification time, exact requested sheet selector, schema version, cleaning-rules version, and embedding model ID. Version ID format is UTC `YYYYMMDDTHHMMSSZ-<first 12 build-identity characters>`. A provider-free build uses embedding model ID `none`, is valid, and reports `vector_status="absent"`; this allows the keyword baseline to be measured before choosing a real embedding provider.
 
 - [ ] **Step 4: Implement the CLI**
 

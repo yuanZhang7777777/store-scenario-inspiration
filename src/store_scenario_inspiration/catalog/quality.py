@@ -149,6 +149,23 @@ def _canonical_document_payload(document: ProductFamilyDocument) -> dict[str, ob
     }
 
 
+def _semantic_document_payload(document: ProductFamilyDocument) -> dict[str, object]:
+    """Return only fields that can affect retrieval, excluding identity/metadata."""
+
+    return {
+        "searchable": document.searchable,
+        "keyword_fields": {
+            "cn_names": _ordered_text_values(document.cn_names),
+            "en_aliases": _ordered_text_values(document.en_aliases),
+            "leaf_categories": _ordered_text_values(document.leaf_categories),
+            "category_paths": [
+                list(path) for path in _ordered_category_paths(document.category_paths)
+            ],
+        },
+        "vector_text_v1": document.vector_text_v1,
+    }
+
+
 def _ordered_documents(
     documents: Sequence[ProductFamilyDocument],
 ) -> list[ProductFamilyDocument]:
@@ -279,10 +296,10 @@ def validate_build(
                     f"for document '{document.doc_id}'"
                 )
 
-    canonical_payloads = [
-        _compact_json(_canonical_document_payload(document)) for document in documents
+    semantic_payloads = [
+        _compact_json(_semantic_document_payload(document)) for document in documents
     ]
-    collision_count = sum(count - 1 for count in Counter(canonical_payloads).values() if count > 1)
+    collision_count = sum(count - 1 for count in Counter(semantic_payloads).values() if count > 1)
     mixed_category_count = sum(
         "mixed_leaf_category" in document.quality_flags for document in documents
     )

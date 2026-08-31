@@ -89,6 +89,8 @@ class BuildManifest:
     built_at: str
     document_count: int
     vector_status: str
+    source_sheet_name: str | None = None
+    source_modified_at: str = ""
 
 
 @dataclass(frozen=True)
