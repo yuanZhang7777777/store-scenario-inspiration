@@ -45,6 +45,9 @@ CREATE VIRTUAL TABLE product_fts USING fts5(
 );
 """
 _CJK_SEGMENT = re.compile(r"[\u4e00-\u9fff]+")
+_CJK_ADJACENT_ALPHANUMERIC = re.compile(
+    r"(?<=[\u4e00-\u9fff])([A-Za-z0-9]+)|([A-Za-z0-9]+)(?=[\u4e00-\u9fff])"
+)
 
 
 def _json(value: object) -> str:
@@ -80,8 +83,8 @@ def _manifest_from_json(value: str) -> BuildManifest:
     return BuildManifest(**json.loads(value))
 
 
-def _cjk_index_tokens(values: Iterable[str]) -> tuple[str, ...]:
-    """Add CJK unigrams/bigrams without repeating an original CJK token."""
+def _index_tokens(values: Iterable[str]) -> tuple[str, ...]:
+    """Add CJK help plus alphanumerics fused directly to CJK text."""
 
     native_terms = {
         segment for value in values for segment in _CJK_SEGMENT.findall(value)
@@ -94,6 +97,11 @@ def _cjk_index_tokens(values: Iterable[str]) -> tuple[str, ...]:
                 if token not in seen and token not in native_terms:
                     seen.add(token)
                     tokens.append(token)
+        for match in _CJK_ADJACENT_ALPHANUMERIC.finditer(value):
+            token = match.group(1) or match.group(2)
+            if token not in seen:
+                seen.add(token)
+                tokens.append(token)
     return tuple(tokens)
 
 
@@ -112,7 +120,7 @@ def _fts_text(values: Iterable[str]) -> str:
         if normalized and normalized not in seen:
             seen.add(normalized)
             originals.append(normalized)
-    return " ".join((*originals, *_cjk_index_tokens(originals)))
+    return " ".join((*originals, *_index_tokens(originals)))
 
 
 class CatalogStore:

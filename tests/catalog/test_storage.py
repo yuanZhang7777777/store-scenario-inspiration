@@ -137,7 +137,6 @@ def test_fts_indexes_only_searchable_keyword_fields_and_expands_alias_once(
     assert [row[0] for row in rows] == ["EN-ONLY", "ZXOD3713"]
     solar_alias_text = rows[1][3]
     assert solar_alias_text == "solar lantern"
-    assert rows[1][1].count("40L") == 1
     assert "ZXOD3713" not in " ".join(rows[1][1:])
     assert "ZXOD3713-BLUE" not in " ".join(rows[1][1:])
     assert "Shopee 禁售" not in " ".join(rows[1][1:])
@@ -181,6 +180,65 @@ def test_keyword_search_matches_a_single_chinese_character_in_a_two_character_na
         hits = store.keyword_search("灯", limit=1)
 
     assert [hit.main_sku for hit in hits] == ["EN-ONLY"]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected_sku"),
+    [("40L", "ZXOD3713"), ("USB", "USB-LAMP"), ("LED", "LED-LAMP")],
+)
+def test_keyword_search_matches_alphanumerics_directly_adjacent_to_chinese(
+    tmp_path, documents, query, expected_sku
+) -> None:
+    usb_lamp = replace(
+        documents[1],
+        doc_id="main:USB-LAMP",
+        main_sku="USB-LAMP",
+        cn_names=("USB充电灯",),
+        en_aliases=(),
+        leaf_categories=(),
+        category_paths=(),
+    )
+    led_lamp = replace(
+        documents[1],
+        doc_id="main:LED-LAMP",
+        main_sku="LED-LAMP",
+        cn_names=("LED灯",),
+        en_aliases=(),
+        leaf_categories=(),
+        category_paths=(),
+    )
+
+    with CatalogStore.create(
+        tmp_path / "catalog.sqlite3", (documents[0], usb_lamp, led_lamp), manifest(3)
+    ) as store:
+        hits = store.keyword_search(query, limit=3)
+
+    assert hits[0].main_sku == expected_sku
+
+
+def test_fts_does_not_repeat_alphanumerics_separated_from_chinese(tmp_path, documents) -> None:
+    separated = replace(
+        documents[1],
+        cn_names=("40L", "USB-充电灯"),
+        en_aliases=("solar lantern",),
+        leaf_categories=(),
+        category_paths=(),
+    )
+    path = tmp_path / "catalog.sqlite3"
+    store = CatalogStore.create(path, (separated,), manifest(1))
+    store.close()
+
+    connection = sqlite3.connect(path)
+    try:
+        cn_names, en_aliases = connection.execute(
+            "SELECT cn_names, en_aliases FROM product_fts"
+        ).fetchone()
+    finally:
+        connection.close()
+
+    assert cn_names.count("40L") == 1
+    assert cn_names.count("USB") == 1
+    assert en_aliases == "solar lantern"
 
 
 @pytest.mark.parametrize("query", ["", " () ", "---", '""'])
