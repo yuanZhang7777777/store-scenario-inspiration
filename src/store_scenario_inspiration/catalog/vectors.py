@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 import json
 import os
+import sys
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Protocol
@@ -53,6 +54,32 @@ class FastEmbedEmbeddingProvider:
     def embed(self, texts: Sequence[str]) -> np.ndarray:
         """Compatibility with the original document-only provider protocol."""
         return self.embed_documents(texts)
+
+
+class EnglishFastEmbedEmbeddingProvider(FastEmbedEmbeddingProvider):
+    """Approved 1024-dimensional English model; legacy Chinese provider is unchanged."""
+
+    model_id = "BAAI/bge-large-en-v1.5"
+    dimension = 1024
+    _QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+
+    def __init__(self, cache_dir: Path) -> None:
+        from fastembed import TextEmbedding
+
+        # ponytail: 2 CPU threads / batch 4 bound this laptop's memory; tune after measurement.
+        self._model = TextEmbedding(model_name=self.model_id, cache_dir=str(cache_dir),
+                                    threads=2, providers=["CPUExecutionProvider"], local_files_only=True)
+
+    def _embed(self, texts: Sequence[str]) -> np.ndarray:
+        values = tuple(texts)
+        if not values:
+            return np.empty((0, self.dimension), dtype=np.float32)
+        vectors = []
+        for count, vector in enumerate(self._model.embed(values, batch_size=4), start=1):
+            vectors.append(vector)
+            if len(values) >= 100 and (count % 128 == 0 or count == len(values)):
+                print(f"english_embeddings={count}/{len(values)}", file=sys.stderr, flush=True)
+        return np.asarray(vectors, dtype=np.float32)
 
 
 @dataclass(frozen=True)
@@ -274,7 +301,7 @@ class ExactVectorIndex:
         ).astype(np.float32)
         return cls(normalized, rows)
 
-    def search(self, query_vector: np.ndarray, limit: int) -> tuple[SearchHit, ...]:
+    def search(self, query_vector: np.ndarray, limit: int, *, main_skus: tuple[str, ...] | None = None) -> tuple[SearchHit, ...]:
         if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
             raise ValueError("limit must be a positive integer")
         try:
@@ -293,7 +320,9 @@ class ExactVectorIndex:
             raise ValueError("query vector must have a non-zero norm")
         normalized_query = (query64 / query_norm).astype(np.float32)
         similarities = self._normalized_matrix @ normalized_query
-        order = sorted(range(len(self._rows)), key=lambda index: (-float(similarities[index]), self._rows[index]))
+        allowed = None if main_skus is None else frozenset(main_skus)
+        candidates = (index for index, sku in enumerate(self._rows) if allowed is None or sku in allowed)
+        order = sorted(candidates, key=lambda index: (-float(similarities[index]), self._rows[index]))
         return tuple(
             SearchHit(
                 main_sku=self._rows[index],

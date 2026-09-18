@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 from openpyxl import Workbook
@@ -53,6 +54,18 @@ def _write_workbook(path: Path, headers: tuple[str, ...]) -> None:
     workbook.save(path)
 
 
+def _force_sheet_dimension_a1(path: Path, sheet_numbers: tuple[int, ...]) -> None:
+    rewritten = path.with_suffix(".rewrite.xlsx")
+    sheet_paths = {f"xl/worksheets/sheet{number}.xml" for number in sheet_numbers}
+    with ZipFile(path) as source, ZipFile(rewritten, "w", ZIP_DEFLATED) as target:
+        for item in source.infolist():
+            data = source.read(item.filename)
+            if item.filename in sheet_paths:
+                data = data.replace(b'<dimension ref="A1:K2" />', b'<dimension ref="A1" />')
+            target.writestr(item, data)
+    rewritten.replace(path)
+
+
 def test_iter_source_rows_autodiscovers_schema_sheet_and_keeps_skus_as_strings(
     tmp_path: Path,
 ) -> None:
@@ -65,6 +78,28 @@ def test_iter_source_rows_autodiscovers_schema_sheet_and_keeps_skus_as_strings(
     assert rows[0].sku == "000123"
     assert rows[0].main_sku == "主-001"
     assert rows[0].product_name == "蓝色40L防水袋"
+
+
+def test_iter_source_rows_autodiscovers_all_matching_sheets_despite_bad_dimensions(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "multi-sheet-bad-dimensions.xlsx"
+    workbook = Workbook()
+    first = workbook.active
+    first.title = "候选一"
+    first.append(REQUIRED_HEADERS)
+    first.append(("A", "MAIN-A", "名称A", "", "", "", "", "", "", "", ""))
+    second = workbook.create_sheet("候选二")
+    second.append(REQUIRED_HEADERS)
+    second.append(("B", "MAIN-B", "名称B", "", "", "", "", "", "", "", ""))
+    last = workbook.create_sheet("候选十六")
+    last.append(REQUIRED_HEADERS)
+    last.append(("C", "MAIN-C", "名称C", "", "", "", "", "", "", "", ""))
+    workbook.save(source)
+    _force_sheet_dimension_a1(source, (1, 2))
+
+    assert [row.sku for row in iter_source_rows(source)] == ["A", "B", "C"]
+    assert [row.sku for row in iter_source_rows(source, sheet_name="候选一")] == ["A"]
 
 
 def test_iter_source_rows_names_the_exact_missing_chinese_header(tmp_path: Path) -> None:
@@ -137,7 +172,7 @@ def test_iter_source_rows_lists_sheets_when_auto_discovery_finds_none(tmp_path: 
         tuple(iter_source_rows(source))
 
 
-def test_iter_source_rows_lists_matching_sheets_when_auto_discovery_is_ambiguous(
+def test_iter_source_rows_reads_multiple_matching_sheets_in_workbook_order(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "ambiguous-schema-sheet.xlsx"
@@ -145,12 +180,13 @@ def test_iter_source_rows_lists_matching_sheets_when_auto_discovery_is_ambiguous
     first = workbook.active
     first.title = "候选一"
     first.append(REQUIRED_HEADERS)
+    first.append(("A", "MAIN-A", "", "", "", "", "", "", "", "", ""))
     second = workbook.create_sheet("候选二")
     second.append(REQUIRED_HEADERS)
+    second.append(("B", "MAIN-B", "", "", "", "", "", "", "", "", ""))
     workbook.save(source)
 
-    with pytest.raises(CatalogSchemaError, match="候选一.*候选二"):
-        tuple(iter_source_rows(source))
+    assert tuple(row.sku for row in iter_source_rows(source)) == ("A", "B")
 
 
 def test_iter_source_rows_closes_the_workbook_when_the_generator_is_closed(

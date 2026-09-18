@@ -11,6 +11,7 @@ from openpyxl import Workbook
 
 from store_scenario_inspiration.catalog.cli import main
 import store_scenario_inspiration.catalog.cli as cli
+from store_scenario_inspiration.catalog import eligibility
 
 
 HEADERS = (
@@ -259,6 +260,22 @@ def test_search_applies_platform_child_filtering(tmp_path: Path, capsys) -> None
     result = json.loads(capsys.readouterr().out)["results"][0]
     assert result["eligible_child_skus"] == ["SAFE"]
     assert result["warnings"] == []
+
+
+def test_old_index_search_displays_eligible_sibling_name(tmp_path: Path, capsys, monkeypatch) -> None:
+    root = tmp_path / "catalog"
+    source = _write_source(tmp_path / "source.xlsx", (
+        ("EXCLUDED", "MIXED", "A售后杯", ""),
+        ("SAFE", "MIXED", "Z榨汁机", ""),
+    ))
+    monkeypatch.setattr(eligibility, "EXCLUDED_CHILD_SKUS", frozenset(), raising=False)
+    assert main(["rebuild", "--source", str(source), "--index-root", str(root)]) == 0
+    capsys.readouterr()
+    monkeypatch.setattr(eligibility, "EXCLUDED_CHILD_SKUS", frozenset({"EXCLUDED"}), raising=False)
+    assert main(["search", "--query", "榨汁机", "--index-root", str(root)]) == 0
+    result = json.loads(capsys.readouterr().out)["results"][0]
+    assert result["eligible_child_skus"] == ["SAFE"]
+    assert result["product_name"] == "Z榨汁机"
 
 
 def test_vector_rebuild_and_multi_query_search_return_product_evidence(

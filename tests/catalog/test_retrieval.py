@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import pytest
 
+from store_scenario_inspiration.catalog import eligibility
 from store_scenario_inspiration.catalog.models import ChildVariant, ProductFamilyDocument, SearchHit
 from store_scenario_inspiration.catalog.retrieval import HybridRetriever, RetrievalQuery
 
@@ -43,6 +44,45 @@ class FakeIndex:
     def search(self, query_vector: np.ndarray, limit: int) -> tuple[SearchHit, ...]:
         self.calls.append((query_vector, limit))
         return self.hits[:limit]
+
+
+@pytest.mark.parametrize("with_vectors", [False, True])
+def test_confirmed_family_exclusion_filters_old_indexes_and_expansions(with_vectors: bool) -> None:
+    # Existing immutable indexes may still carry searchable copies of this family.
+    store = FakeStore(
+        (SearchHit("1A0000", 1.0, ("keyword",)), SearchHit("1A00001", 0.5, ("keyword",))),
+        {sku: document(sku) for sku in ("1A0000", "1A00001")},
+    )
+    index = FakeIndex((SearchHit("1A0000", 1.0, ("vector",)),)) if with_vectors else None
+    vector = np.array([1.0]) if with_vectors else None
+    hits = HybridRetriever(store, index).search(
+        RetrievalQuery("收纳"), vector, limit=1,
+        expanded_queries=("纸巾",), expanded_query_vectors=(vector,),
+    )
+    assert [hit.main_sku for hit in hits] == ["1A00001"]
+
+
+@pytest.mark.parametrize("with_vectors", [False, True])
+def test_confirmed_children_are_filtered_in_old_indexes_without_removing_siblings(monkeypatch, with_vectors: bool) -> None:
+    monkeypatch.setattr(eligibility, "EXCLUDED_CHILD_SKUS", frozenset({"OUT-1", "OUT-2"}), raising=False)
+    removed = document("REMOVED", (ChildVariant("OUT-1", "售后杯", "", ()),))
+    mixed = document("MIXED", (
+        ChildVariant(" ＯＵＴ-2 ", "纸箱", "质量", ()),
+        ChildVariant("SAFE", "正常商品", "", ()),
+    ))
+    store = FakeStore(
+        (SearchHit("REMOVED", 1.0, ("keyword",)), SearchHit("MIXED", 0.5, ("keyword",))),
+        {"REMOVED": removed, "MIXED": mixed},
+    )
+    index = FakeIndex((SearchHit("REMOVED", 1.0, ("vector",)), SearchHit("MIXED", 0.5, ("vector",)))) if with_vectors else None
+    vector = np.array([1.0]) if with_vectors else None
+    hits = HybridRetriever(store, index).search(
+        RetrievalQuery("收纳"), vector, limit=1,
+        expanded_queries=("箱子",), expanded_query_vectors=(vector,),
+    )
+    assert [hit.main_sku for hit in hits] == ["MIXED"]
+    assert hits[0].eligible_child_skus == ("SAFE",)
+    assert hits[0].warnings == ()
 
 
 def test_hybrid_search_uses_rrf_deduplicates_and_tracks_stable_sources() -> None:

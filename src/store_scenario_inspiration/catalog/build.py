@@ -6,6 +6,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 import re
 
+from .eligibility import is_excluded_main_sku, is_excluded_product
 from .models import ChildVariant, ProductFamilyDocument, SourceRow
 from .normalize import (
     _truncate_operational_text,
@@ -112,6 +113,7 @@ def _remove_identifier_tokens(value: str, identifiers: tuple[str, ...]) -> str:
 
 
 def _build_document(main_sku: str, rows: tuple[SourceRow, ...]) -> ProductFamilyDocument:
+    eligible_rows = tuple(row for row in rows if not is_excluded_product(main_sku, row.sku))
     identifiers = tuple(
         sorted(
             {
@@ -121,44 +123,49 @@ def _build_document(main_sku: str, rows: tuple[SourceRow, ...]) -> ProductFamily
         )
     )
     indexed_names = tuple(
-        _remove_identifier_tokens(row.product_name, identifiers) for row in rows
+        _remove_identifier_tokens(row.product_name, identifiers) for row in eligible_rows
     )
     cn_names = _sorted_unique_display(indexed_names)
     english_aliases = _sorted_unique_display(
         value
-        for row in rows
+        for row in eligible_rows
         for value in (row.english_name, row.english_keywords)
     )
     leaf_categories = _sorted_unique_display(
-        leaf for row in rows if (leaf := _leaf_category(row)) is not None
+        leaf for row in eligible_rows if (leaf := _leaf_category(row)) is not None
     )
     category_paths = _unique_paths_in_order(
-        path for row in rows if (path := _category_path(row))
+        path for row in eligible_rows if (path := _category_path(row))
     )
     vector_text = make_vector_text(indexed_names)
     flags: set[str] = set()
     if len(leaf_categories) > 1:
         flags.add("mixed_leaf_category")
-    if any(_has_placeholder_english(row) for row in rows):
+    if any(_has_placeholder_english(row) for row in eligible_rows):
         flags.add("placeholder_english")
-    if any(_has_operational_text(row) for row in rows):
+    if any(_has_operational_text(row) for row in eligible_rows):
         flags.add("operational_text")
     if not vector_text:
         flags.add("unsearchable")
+    excluded = is_excluded_main_sku(main_sku)
+    if excluded:
+        flags.add("excluded_main_sku")
+    elif len(eligible_rows) != len(rows):
+        flags.add("excluded_children")
 
     children = tuple(
         ChildVariant(
             sku=row.sku,
             display_name=row.product_name,
             sales_status_raw=row.sales_status_raw,
-            status_flags=(),
+            status_flags=("excluded_sku",) if is_excluded_product(main_sku, row.sku) else (),
         )
         for row in rows
     )
     return ProductFamilyDocument(
         doc_id=f"main:{main_sku}",
         main_sku=main_sku,
-        searchable=bool(vector_text),
+        searchable=bool(vector_text) and not excluded,
         cn_names=cn_names,
         en_aliases=english_aliases,
         leaf_categories=leaf_categories,

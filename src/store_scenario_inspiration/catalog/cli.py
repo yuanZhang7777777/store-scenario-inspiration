@@ -8,7 +8,9 @@ import json
 from pathlib import Path
 import sys
 
+from .eligibility import is_excluded_product
 from .models import BuildManifest
+from .normalize import clean_optional_text
 from .retrieval import HybridRetriever, RetrievalQuery
 from .storage import CatalogStore
 from .vectors import ExactVectorIndex, FastEmbedEmbeddingProvider
@@ -159,19 +161,26 @@ def _search(args: argparse.Namespace) -> int:
             expanded_query_vectors=expanded_query_vectors,
             limit=args.top_k,
         )
-        results = [
-            {
+        results = []
+        for hit in hits:
+            document = store.get_document(hit.main_sku)
+            product_name = document.cn_names[0] if document and document.cn_names else ""
+            if document and any(is_excluded_product(document.main_sku, child.sku) for child in document.children):
+                # Older immutable indexes may still have excluded names in cn_names.
+                product_name = next((
+                    child.display_name for child in document.children
+                    if child.sku in hit.eligible_child_skus and clean_optional_text(child.display_name)
+                ), "")
+            results.append({
                 "main_sku": hit.main_sku,
                 "score": hit.score,
                 "sources": list(hit.sources),
                 "eligible_child_skus": list(hit.eligible_child_skus),
                 "child_skus": list(hit.eligible_child_skus),
-                "product_name": (document.cn_names[0] if (document := store.get_document(hit.main_sku)) and document.cn_names else ""),
+                "product_name": product_name,
                 "matched_queries": list(hit.matched_queries),
                 "warnings": list(hit.warnings),
-            }
-            for hit in hits
-        ]
+            })
     payload = {
         "query": query.text,
         "platform": query.platform,

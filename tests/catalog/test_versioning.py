@@ -111,6 +111,23 @@ def _snapshot(root: Path) -> dict[str, bytes]:
     }
 
 
+def test_rebuild_records_missing_identity_without_inventing_a_main_sku(tmp_path: Path) -> None:
+    source = _write_source(tmp_path / "source.xlsx", (
+        _row("CHILD-1", "MAIN-1", "露营灯"),
+        _row("CHILD-2", "", "没有主SKU的灯"),
+    ))
+    manager = CatalogIndexManager(tmp_path / "catalog")
+    manifest = manager.rebuild(source, sheet_name=None, provider=None)
+    folder = manager.versions_dir / manifest.version_id
+    imported = json.loads((folder / "source-import.json").read_text(encoding="utf-8"))
+    assert imported["source_row_count"] == 2
+    assert imported["indexed_source_row_count"] == 1
+    assert imported["unassigned_rows"][0]["sku"] == "CHILD-2"
+    assert imported["unassigned_rows"][0]["main_sku"] == ""
+    assert manifest.document_count == 1
+    assert manager.active_manifest().version_id == manifest.version_id
+
+
 def test_failed_rebuild_keeps_active_version(tmp_path: Path) -> None:
     valid_source = _write_source(
         tmp_path / "valid.xlsx", (_row("SKU-1", "MAIN-1", "露营灯"),)
@@ -226,7 +243,8 @@ def test_schema_cleaning_rule_and_embedding_model_identity_changes_force_rebuild
 
     monkeypatch.setattr(versioning, "DOCUMENT_SCHEMA_VERSION", "3")
     schema_changed = manager.rebuild(source, sheet_name=None, provider=None)
-    monkeypatch.setattr(versioning, "CLEANING_RULES_VERSION", "2")
+    next_rules_version = str(int(versioning.CLEANING_RULES_VERSION) + 1)
+    monkeypatch.setattr(versioning, "CLEANING_RULES_VERSION", next_rules_version)
     rules_changed = manager.rebuild(source, sheet_name=None, provider=None)
     provider = RecordingProvider()
     vector_build = manager.rebuild(source, sheet_name=None, provider=provider)
@@ -234,7 +252,7 @@ def test_schema_cleaning_rule_and_embedding_model_identity_changes_force_rebuild
     assert schema_changed.version_id != first.version_id
     assert schema_changed.schema_version == "3"
     assert rules_changed.version_id != schema_changed.version_id
-    assert rules_changed.cleaning_rules_version == "2"
+    assert rules_changed.cleaning_rules_version == next_rules_version
     assert vector_build.version_id != rules_changed.version_id
     assert vector_build.embedding_model_id == provider.model_id
     assert vector_build.vector_status == "present"
@@ -534,7 +552,7 @@ def test_embedding_cache_is_reused_but_each_version_keeps_complete_vector_artifa
     first = manager.rebuild(source, sheet_name=None, provider=provider)
     first_dir = manager.index_root / "versions" / first.version_id
 
-    monkeypatch.setattr(versioning, "CLEANING_RULES_VERSION", "2")
+    monkeypatch.setattr(versioning, "CLEANING_RULES_VERSION", str(int(versioning.CLEANING_RULES_VERSION) + 1))
     second = manager.rebuild(source, sheet_name=None, provider=provider)
     second_dir = manager.index_root / "versions" / second.version_id
 
@@ -620,6 +638,7 @@ def test_build_identity_is_canonical_and_final_version_never_contains_source_wor
         "delta.json",
         "manifest.json",
         "quality.json",
+        "source-import.json",
     }
     assert source.read_bytes().startswith(b"PK")
 
@@ -660,6 +679,7 @@ def test_active_validation_rejects_tampered_complete_artifacts(tmp_path: Path) -
         "manifest.json",
         "quality.json",
         "delta.json",
+        "source-import.json",
     }
     (version / "quality.json").write_text("{}", encoding="utf-8")
 

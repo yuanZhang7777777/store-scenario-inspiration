@@ -128,6 +128,7 @@ class CatalogStore:
 
     def __init__(self, connection: sqlite3.Connection, manifest: BuildManifest) -> None:
         self._connection: sqlite3.Connection | None = connection
+        self._english_keyword_index: Path | None = None
         self.manifest = manifest
 
     @property
@@ -266,24 +267,61 @@ class CatalogStore:
         ).fetchone()
         return None if row is None else _document_from_json(row[0])
 
-    def keyword_search(self, query: str, limit: int) -> tuple[SearchHit, ...]:
+    def use_english_keyword_index(self, path: Path) -> None:
+        """Attach a read-only English keyword FTS index for english_only searches."""
+
+        target = Path(path).resolve()
+        if self._english_keyword_index == target:
+            return
+        connection = self._require_connection()
+        if self._english_keyword_index is not None:
+            connection.execute("DETACH DATABASE english_keyword")
+        connection.execute(
+            "ATTACH DATABASE ? AS english_keyword", (target.as_uri() + "?mode=ro",)
+        )
+        connection.execute(
+            "SELECT 1 FROM english_keyword.sqlite_master WHERE name = ?",
+            ("english_fts",),
+        ).fetchone()
+        self._english_keyword_index = target
+
+    def keyword_search(
+        self, query: str, limit: int, *, main_skus: tuple[str, ...] | None = None,
+        english_only: bool = False,
+    ) -> tuple[SearchHit, ...]:
         """Search sanitized tokens only; raw user text is never FTS syntax."""
 
         if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
             raise ValueError("limit must be a positive integer")
+        if main_skus == ():
+            return ()
         tokens = keyword_tokens(query)
         if not tokens:
             raise ValueError("query must contain at least one searchable token")
         # Every token is separately quoted. OR keeps partial query evidence useful
         # while eliminating FTS operators, phrases, columns, and punctuation syntax.
-        match_query = " OR ".join(f'"{token.replace(chr(34), chr(34) * 2)}"' for token in tokens)
+        match_query = " OR ".join(
+            f'"{token.replace(chr(34), chr(34) * 2)}"' for token in tokens
+        )
+        if english_only and self._english_keyword_index is None:
+            match_query = "en_aliases : (" + match_query + ")"
+        use_english_index = english_only and self._english_keyword_index is not None
+        table = "english_keyword.english_fts" if use_english_index else "product_fts"
+        match_table = "english_fts" if use_english_index else "product_fts"
+        score_weights = "0.0, 1.0" if use_english_index else "0.0, 8.0, 4.0, 1.0"
+        scope_sql = ""
+        parameters: list[object] = [match_query]
+        if main_skus is not None:
+            scope_sql = " AND main_sku IN (" + ",".join("?" for _ in main_skus) + ")"
+            parameters.extend(main_skus)
+        parameters.append(limit)
         rows = self._require_connection().execute(
-            """SELECT main_sku, -bm25(product_fts, 0.0, 8.0, 4.0, 1.0) AS score
-               FROM product_fts
-               WHERE product_fts MATCH ?
+            f"""SELECT main_sku, -bm25({match_table}, {score_weights}) AS score
+               FROM {table}
+               WHERE {match_table} MATCH ?""" + scope_sql + """
                ORDER BY score DESC, main_sku ASC
                LIMIT ?""",
-            (match_query, limit),
+            parameters,
         ).fetchall()
         return tuple(
             SearchHit(main_sku=row[0], score=float(row[1]), sources=("keyword",))

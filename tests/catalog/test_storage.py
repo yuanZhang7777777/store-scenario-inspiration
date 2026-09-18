@@ -5,12 +5,90 @@ from dataclasses import replace
 
 import pytest
 
+from store_scenario_inspiration.catalog.english import (
+    build_english_keyword_index,
+    english_document,
+)
 from store_scenario_inspiration.catalog.models import (
     BuildManifest,
     ChildVariant,
     ProductFamilyDocument,
 )
 from store_scenario_inspiration.catalog.storage import CatalogStore
+from store_scenario_inspiration.catalog.retrieval import HybridRetriever, RetrievalQuery
+
+
+def test_english_retrieval_ignores_matching_words_in_chinese_name_field(tmp_path, documents):
+    misleading = replace(documents[0], cn_names=("Portable blender 中文备注",), en_aliases=("Solar lantern",))
+    wanted = replace(documents[1], en_aliases=("Portable blender",))
+    with CatalogStore.create(tmp_path / "english.sqlite3", (misleading, wanted), manifest()) as store:
+        hits = HybridRetriever(store, english_only=True).search(RetrievalQuery("portable blender"), None, 20)
+        assert [hit.main_sku for hit in hits] == ["EN-ONLY"]
+        assert store.keyword_search("portable blender", 20, english_only=True, main_skus=("ZXOD3713",)) == ()
+
+
+def test_english_keyword_index_overlays_stock_english_without_mutating_source(
+    tmp_path, documents
+) -> None:
+    lace = replace(
+        documents[1],
+        doc_id="main:SH-CW-2339",
+        main_sku="SH-CW-2339",
+        en_aliases=(),
+    )
+    pendant = replace(
+        documents[1],
+        doc_id="main:WATOY320",
+        main_sku="WATOY320",
+        en_aliases=("1005009609633212",),
+    )
+    sourced = replace(
+        documents[1],
+        doc_id="main:SOURCED",
+        main_sku="SOURCED",
+        en_aliases=("ERP Source Name",),
+    )
+    source_path = tmp_path / "catalog.sqlite3"
+    english_path = tmp_path / "english.sqlite3"
+    with CatalogStore.create(
+        source_path, (lace, pendant, sourced, documents[0]), manifest(4)
+    ) as store:
+        build_english_keyword_index(
+            store,
+            english_path,
+            tuple(english_document(document) for document in (lace, pendant, sourced)),
+        )
+        store.use_english_keyword_index(english_path)
+
+        assert [
+            hit.main_sku
+            for hit in store.keyword_search("lace", 10, english_only=True)
+        ] == ["SH-CW-2339"]
+        assert [
+            hit.main_sku
+            for hit in store.keyword_search(
+                "ancient weapon", 10, english_only=True, main_skus=("WATOY320",)
+            )
+        ] == ["WATOY320"]
+        assert (
+            store.keyword_search(
+                "ancient weapon", 10, english_only=True, main_skus=("SOURCED",)
+            )
+            == ()
+        )
+        assert [
+            hit.main_sku
+            for hit in store.keyword_search("ERP Source", 10, english_only=True)
+        ] == ["SOURCED"]
+
+    connection = sqlite3.connect(source_path)
+    try:
+        rows = dict(connection.execute("SELECT main_sku, en_aliases FROM product_fts"))
+    finally:
+        connection.close()
+
+    assert rows["SH-CW-2339"] == ""
+    assert rows["WATOY320"] == "1005009609633212"
 
 
 def manifest(document_count: int = 2) -> BuildManifest:
@@ -87,6 +165,15 @@ def test_keyword_search_breaks_equal_bm25_scores_by_main_sku(tmp_path, documents
 
     assert [hit.main_sku for hit in hits] == ["AAA", "ZXOD3713"]
     assert hits[0].score == hits[1].score
+
+
+def test_country_main_sku_scope_is_applied_before_keyword_top_k(tmp_path, documents):
+    first = replace(documents[0], doc_id="main:AAA", main_sku="AAA")
+    with CatalogStore.create(tmp_path / "scoped.sqlite3", (first, documents[0]), manifest()) as store:
+        assert store.keyword_search("灯笼", 1)[0].main_sku == "AAA"
+        hits = store.keyword_search("灯笼", 1, main_skus=("ZXOD3713",))
+        assert [hit.main_sku for hit in hits] == ["ZXOD3713"]
+        assert store.keyword_search("灯笼", 1, main_skus=()) == ()
 
 
 def test_storage_round_trips_documents_manifest_and_children_losslessly(

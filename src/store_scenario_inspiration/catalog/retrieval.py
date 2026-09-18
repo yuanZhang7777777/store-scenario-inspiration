@@ -8,7 +8,9 @@ import unicodedata
 
 import numpy as np
 
+from .eligibility import is_excluded_main_sku, is_excluded_sku
 from .models import ChildVariant, SearchHit
+from .qdrant import QdrantVectorIndex
 from .storage import CatalogStore
 from .vectors import ExactVectorIndex
 
@@ -51,9 +53,10 @@ class RetrievalQuery:
 class HybridRetriever:
     """Fuse keyword and optional vector candidates, then filter explicit child bans."""
 
-    def __init__(self, store: CatalogStore, vector_index: ExactVectorIndex | None = None) -> None:
+    def __init__(self, store: CatalogStore, vector_index: ExactVectorIndex | QdrantVectorIndex | None = None, *, english_only: bool = False) -> None:
         self._store = store
         self._vector_index = vector_index
+        self._english_only = english_only
 
     def search(
         self,
@@ -63,6 +66,7 @@ class HybridRetriever:
         *,
         expanded_queries: tuple[str, ...] = (),
         expanded_query_vectors: tuple[np.ndarray | None, ...] = (),
+        main_skus: tuple[str, ...] | None = None,
     ) -> tuple[SearchHit, ...]:
         if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
             raise ValueError("limit must be a positive integer")
@@ -79,14 +83,20 @@ class HybridRetriever:
             for text, vector in zip(expanded_queries, expanded_query_vectors, strict=True)
         )
         for query_text, vector, weight in queries:
+            scope = {} if main_skus is None else {"main_skus": main_skus}
+            keyword_scope = dict(scope)
+            if self._english_only:
+                keyword_scope["english_only"] = True
             channels: list[tuple[str, tuple[SearchHit, ...]]] = [
-                ("keyword", self._store.keyword_search(query_text, 50))
+                ("keyword", self._store.keyword_search(query_text, 50, **keyword_scope))
             ]
             if vector is not None and self._vector_index is not None:
-                channels.append(("vector", self._vector_index.search(vector, 50)))
+                channels.append(("vector", self._vector_index.search(vector, 50, **scope)))
             for source, candidates in channels:
                 seen_in_source: set[str] = set()
                 for position, candidate in enumerate(candidates, start=1):
+                    if is_excluded_main_sku(candidate.main_sku):
+                        continue
                     if candidate.main_sku in seen_in_source:
                         continue
                     seen_in_source.add(candidate.main_sku)
@@ -133,6 +143,8 @@ def _child_availability(
     warnings: list[str] = []
     warning_seen: set[str] = set()
     for child in children:
+        if is_excluded_sku(child.sku):
+            continue
         status = child.sales_status_raw
         normalized_status = _status_key(status)
         is_banned = normalized_status and _is_explicit_platform_ban(normalized_status, platform_key)

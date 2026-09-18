@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from .build import build_documents
 from .models import BuildManifest
+from .normalize import normalize_compare
 from .quality import QualityDelta, QualityReport, compare_quality, validate_build
 from .storage import CatalogStore
 from .vectors import EmbeddingProvider, ExactVectorIndex, build_vector_matrix
@@ -22,7 +23,7 @@ from .workbook import iter_source_rows
 
 
 DOCUMENT_SCHEMA_VERSION = "2"
-CLEANING_RULES_VERSION = "1"
+CLEANING_RULES_VERSION = "4"
 NO_EMBEDDING_MODEL_ID = "none"
 
 _VERSION_ID = re.compile(r"\A\d{8}T\d{6}Z-[0-9a-f]{12}\Z")
@@ -259,6 +260,8 @@ class CatalogIndexManager:
     @staticmethod
     def _artifact_names(manifest: BuildManifest) -> frozenset[str]:
         names = {"catalog.sqlite3", "manifest.json", "quality.json", "delta.json"}
+        if manifest.cleaning_rules_version.isdigit() and int(manifest.cleaning_rules_version) >= 4:
+            names.add("source-import.json")
         if manifest.vector_status == "present":
             names.update(("vectors.npy", "vector-rows.json"))
         return frozenset(names)
@@ -579,7 +582,19 @@ class CatalogIndexManager:
         staging.mkdir()
         renamed = False
         try:
-            rows = tuple(iter_source_rows(source_path, sheet_name))
+            raw_rows = tuple(iter_source_rows(source_path, sheet_name))
+            rows = tuple(row for row in raw_rows if normalize_compare(row.main_sku))
+            unassigned = [asdict(row) for row in raw_rows if not normalize_compare(row.main_sku)]
+            if not rows:
+                raise CatalogIndexError("no source rows with a main SKU; active catalog unchanged")
+            _write_json_fsync(staging / "source-import.json", {
+                "selection": "all_matching_sheets" if sheet_name is None else sheet_name,
+                "source_row_count": len(raw_rows),
+                "indexed_source_row_count": len(rows),
+                "unassigned_main_sku_row_count": len(unassigned),
+                "unassigned_rows": unassigned,
+            })
+            del raw_rows
             documents = build_documents(rows)
             quality = validate_build(rows, documents)
             previous_quality = None if active is None else self._read_quality(active.version_id)
