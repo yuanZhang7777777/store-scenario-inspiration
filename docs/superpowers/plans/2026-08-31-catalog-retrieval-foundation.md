@@ -1,5 +1,7 @@
 # Catalog Retrieval Foundation Implementation Plan
 
+> **状态（2026-09-17）：已被产品资产新口径取代，不应继续照此执行。** 当前权威口径见设计规格第 18 节：活跃商品范围改为库存中心 `平销款/利润款/引流款`，唯一事实表为 `E:\Project\store-assortment-copilot\var\product-asset\catalog.sqlite3`。本文的 8,550 主 SKU、中文单路向量文本和全量 ERP 构建步骤仅保留为历史方案。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a deterministic, versioned ERP catalog indexer with SQLite FTS keyword search, replaceable in-memory vector search, embedding reuse, atomic product-list updates, and rollback.
