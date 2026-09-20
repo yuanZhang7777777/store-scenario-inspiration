@@ -20,3 +20,6 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# "." makes `scripts.x` importable as a namespace package; "scripts" supports
+# the bare `import x` style some tests use. Both styles exist today.
+pythonpath = [".", "src", "scripts"]
