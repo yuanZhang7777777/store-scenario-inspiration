@@ -185,16 +185,14 @@ def find_purity_violations(analysis: dict, excluded: list[str]) -> list[dict]:
     """Report product needs that mention a clue the direction gate excluded.
 
     A soft signal for the operator, never a reason to throw away a result that
-    has already been paid for. Matching is heuristic — a latin run of the
-    excluded name has to reappear (``CCTV``), a Chinese run has to be contained
-    in one the model wrote (``存储卡`` inside ``监控存储卡``) — so an alias the
-    model invented can still slip through, and a neighbouring accessory may be
-    flagged for a glance.
+    has already been paid for. Matching is heuristic, so an alias the model
+    invented can still slip through, and a neighbouring accessory may be flagged
+    for a glance.
     """
     violations = []
     for scene in analysis.get("scenes") or []:
         for product in scene.get("product_needs") or []:
-            text = " ".join(str(product.get(field, "")) for field in ("product_cn", "product_en"))
+            text = product_text(product)
             violations.extend(
                 {
                     "scene_name": scene.get("scene_name"),
@@ -202,12 +200,22 @@ def find_purity_violations(analysis: dict, excluded: list[str]) -> list[dict]:
                     "excluded_clue": name,
                 }
                 for name in excluded
-                if _mentions(text, name)
+                if mentions(text, name)
             )
     return violations
 
 
-def _mentions(text: str, name: str) -> bool:
+def product_text(product: dict) -> str:
+    return " ".join(str(product.get(field, "")) for field in ("product_cn", "product_en"))
+
+
+def mentions(text: str, name: str) -> bool:
+    """Whether a product description refers to a clue, without needing an exact name.
+
+    A latin run of the clue has to reappear (``CCTV``), while a Chinese run only
+    has to be contained in one the model wrote (``存储卡`` inside ``监控存储卡``),
+    because Chinese names get compounded rather than repeated verbatim.
+    """
     text, name = str(text).lower(), str(name).lower()
     if set(_LATIN.findall(name)) & set(_LATIN.findall(text)):
         return True

@@ -164,15 +164,13 @@ def normalize_analysis(value: dict) -> dict:
     return value
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--expand", action="store_true")
-    parser.add_argument("--input", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
-    source_file = args.input
-    source = json.loads(source_file.read_text(encoding="utf-8"))
-    key = os.environ.get("DEEPSEEK_API_KEY", "").strip() or getpass.getpass("DeepSeek API key: ").strip()
+def analyze(source: dict, key: str, *, expand: bool = False) -> tuple[dict, dict]:
+    """Ask DeepSeek for a store analysis or an expansion pass.
+
+    Returns the validated result and a receipt of what the call cost, so a
+    caller running many stores can report spend without ever holding the key or
+    the request body.
+    """
     if not key or "\n" in key or "\r" in key:
         raise ValueError("missing API key")
     payload = {
@@ -182,7 +180,7 @@ def main() -> None:
         "response_format": {"type": "json_object"},
         "max_tokens": 7000,
         "messages": [
-            {"role": "system", "content": EXPANSION_SYSTEM if args.expand else SYSTEM},
+            {"role": "system", "content": EXPANSION_SYSTEM if expand else SYSTEM},
             {"role": "user", "content": json.dumps(source, ensure_ascii=False)},
         ],
     }
@@ -197,16 +195,30 @@ def main() -> None:
     except urllib.error.HTTPError as error:
         raise RuntimeError(f"DeepSeek HTTP {error.code}") from error
     result = json.loads(body["choices"][0]["message"]["content"])
-    if args.expand:
-        result = normalize_expansions(result)
-    else:
-        result = normalize_analysis(result)
-    (validate_expansions if args.expand else validate)(result)
+    result = normalize_expansions(result) if expand else normalize_analysis(result)
+    (validate_expansions if expand else validate)(result)
+    return result, {
+        "response_id": body.get("id"),
+        "response_model": body.get("model"),
+        "usage": body.get("usage", {}),
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--expand", action="store_true")
+    parser.add_argument("--input", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    source = json.loads(args.input.read_text(encoding="utf-8"))
+    key = os.environ.get("DEEPSEEK_API_KEY", "").strip() or getpass.getpass("DeepSeek API key: ").strip()
+    result, receipt = analyze(source, key, expand=args.expand)
     output = args.output
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    usage = body.get("usage", {})
-    print(json.dumps({"output": str(output), "scenes": len(result["scenes"]), "usage": usage}, ensure_ascii=False))
+    print(json.dumps({
+        "output": str(output), "scenes": len(result["scenes"]), "usage": receipt["usage"],
+    }, ensure_ascii=False))
 
 
 if __name__ == "__main__":
