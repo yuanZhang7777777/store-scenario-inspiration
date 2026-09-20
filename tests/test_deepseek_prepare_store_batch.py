@@ -3,12 +3,28 @@ from pathlib import Path
 import subprocess
 import sys
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "deepseek_prepare_store_batch.py"
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from deepseek_prepare_store_batch import build_sample, recognize, store_id, validate_result
+from deepseek_prepare_store_batch import (
+    build_sample,
+    recognize,
+    split_clue_names,
+    store_id,
+    validate_result,
+)
+
+
+def product(name: str, role: str, confidence: float) -> dict:
+    return {"name": name, "role": role, "confidence": confidence, "evidence": f"{name} 的判断依据"}
+
+
+def one_image(products: list[dict], filename: str = "one.png") -> dict:
+    return {"images": [{"filename": filename, "products": products}]}
 
 
 def test_recognition_result_becomes_product_clues(tmp_path) -> None:
@@ -19,13 +35,75 @@ def test_recognition_result_becomes_product_clues(tmp_path) -> None:
         "images": [{"filename": "one.png", "local_path": str(image)}],
     }
     result = validate_result(
-        {"images": [{"filename": "one.png", "products": ["折叠椅", "折叠椅", "遮阳伞"]}]},
+        one_image([
+            product("折叠椅", "商品卡片主图", 0.9),
+            product("折叠椅", "商品卡片主图", 0.9),
+            product("遮阳伞", "场景中偶然出现", 0.5),
+        ]),
         ["one.png"],
     )
     sample = build_sample(entry, result, tmp_path / "input" / "stores.json")
 
     assert store_id(entry) == "row007-shopee-20005ph"
-    assert [item["clue"] for item in sample["observed_product_clues"]] == ["折叠椅", "遮阳伞"]
+    clues = sample["observed_product_clues"]
+    assert [item["clue"] for item in clues] == ["折叠椅", "遮阳伞"]
+    assert [item["role"] for item in clues] == ["商品卡片主图", "场景中偶然出现"]
+    assert [item["confidence"] for item in clues] == [0.9, 0.5]
+
+
+def test_merged_clue_is_split_into_atomic_products(tmp_path) -> None:
+    image = tmp_path / "one.png"
+    image.write_bytes(b"not read by this test")
+    entry = {
+        "source_row": 7, "store_name": "Shopee-20005PH", "country": "PH",
+        "images": [{"filename": "one.png", "local_path": str(image)}],
+    }
+    merged = "鱼箱、麦克风、马克杯礼盒"
+    result = validate_result(one_image([product(merged, "商品卡片主图", 0.8)]), ["one.png"])
+
+    clues = build_sample(entry, result, tmp_path / "stores.json")["observed_product_clues"]
+
+    assert [item["clue"] for item in clues] == ["鱼箱", "麦克风", "马克杯礼盒"]
+    assert all(item["merged_from"] == [merged] for item in clues)
+    assert all(item["role"] == "商品卡片主图" for item in clues)
+
+
+def test_slash_aliases_are_kept_as_one_product() -> None:
+    assert split_clue_names("Micro SD/CCTV 存储卡") == ("Micro SD/CCTV 存储卡",)
+    assert split_clue_names("折叠露营椅") == ("折叠露营椅",)
+
+
+def test_strongest_role_wins_across_images(tmp_path) -> None:
+    images = []
+    for filename in ("one.png", "two.png"):
+        path = tmp_path / filename
+        path.write_bytes(b"not read by this test")
+        images.append({"filename": filename, "local_path": str(path)})
+    entry = {"source_row": 7, "store_name": "Shopee-20005PH", "country": "PH", "images": images}
+    result = validate_result(
+        {"images": [
+            {"filename": "one.png", "products": [product("折叠椅", "场景中偶然出现", 0.4)]},
+            {"filename": "two.png", "products": [product("折叠椅", "商品卡片主图", 0.6)]},
+        ]},
+        ["one.png", "two.png"],
+    )
+
+    clue = build_sample(entry, result, tmp_path / "stores.json")["observed_product_clues"][0]
+
+    assert clue["role"] == "商品卡片主图"
+    assert clue["confidence"] == 0.6
+    assert clue["source_image"] == ["one.png", "two.png"]
+    assert [item["role"] for item in clue["occurrences"]] == ["场景中偶然出现", "商品卡片主图"]
+
+
+def test_unknown_role_is_rejected() -> None:
+    with pytest.raises(ValueError, match="invalid product role"):
+        validate_result(one_image([product("折叠椅", "背景道具", 0.5)]), ["one.png"])
+
+
+def test_out_of_range_confidence_is_rejected() -> None:
+    with pytest.raises(ValueError, match="confidence"):
+        validate_result(one_image([product("折叠椅", "商品卡片主图", 1.5)]), ["one.png"])
 
 
 def test_cli_resumes_existing_and_filters_unsupported_country(tmp_path) -> None:
@@ -46,7 +124,7 @@ def test_cli_resumes_existing_and_filters_unsupported_country(tmp_path) -> None:
     }), encoding="utf-8")
     sample.with_name("deepseek_vision.json").write_text(json.dumps({
         "input_filenames": ["one.png"],
-        "images": [{"filename": "one.png", "products": ["折叠椅"]}],
+        "images": [{"filename": "one.png", "products": [product("折叠椅", "商品卡片主图", 0.9)]}],
         "response_id": "response-id", "response_model": "deepseek-flash", "usage": {},
     }, ensure_ascii=False), encoding="utf-8")
 
@@ -73,9 +151,9 @@ def test_recognition_receipt_keeps_usage_without_request_secrets(tmp_path, monke
     body = {
         "id": "chat-123", "model": "deepseek-flash",
         "usage": {"prompt_tokens": 12, "completion_tokens": 3, "total_tokens": 15},
-        "choices": [{"message": {"content": json.dumps({
-            "images": [{"filename": "one.png", "products": ["折叠椅"]}]
-        }, ensure_ascii=False)}}],
+        "choices": [{"message": {"content": json.dumps(
+            one_image([product("折叠椅", "商品卡片主图", 0.9)]), ensure_ascii=False
+        )}}],
     }
 
     class Response:
@@ -92,7 +170,8 @@ def test_recognition_receipt_keeps_usage_without_request_secrets(tmp_path, monke
     result, receipt = recognize(entry, "secret-key")
     serialized = json.dumps(receipt, ensure_ascii=False)
 
-    assert result["images"][0]["products"] == ["折叠椅"]
+    assert result["images"][0]["products"][0]["name"] == "折叠椅"
+    assert result["images"][0]["products"][0]["role"] == "商品卡片主图"
     assert receipt["usage"]["total_tokens"] == 15
     assert receipt["response_id"] == "chat-123"
     assert "secret-key" not in serialized
