@@ -20,6 +20,14 @@ def write(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
 
 
+def observation(clue: str, role: str) -> dict:
+    return {"clue": clue, "role": role, "confidence": 0.9, "evidence": "依据"}
+
+
+def occurrence(image: str, role: str) -> dict:
+    return {"image": image, "role": role, "confidence": 0.9, "evidence": "依据"}
+
+
 def test_batch_resumes_at_api_free_assembly(tmp_path) -> None:
     base = tmp_path / "stores" / "row-1"
     write(tmp_path / "manifest.json", {"models": ["gpt55"], "stores": [{"id": "row-1"}]})
@@ -47,6 +55,33 @@ def test_batch_resumes_at_api_free_assembly(tmp_path) -> None:
 
     assert json.loads(result.stdout)["runs"][0]["stages"]["final"] == "ready"
     assert json.loads((base / "gpt55_final.json").read_text(encoding="utf-8"))["recommended_main_skus"] == []
+
+
+def test_pipeline_applies_the_direction_gate_before_analysis(tmp_path) -> None:
+    base = tmp_path / "stores" / "row-1"
+    write(tmp_path / "manifest.json", {"models": ["deepseek"], "stores": [{"id": "row-1"}]})
+    write(base / "sample_store.json", {
+        "store": {"country": "PH"},
+        "observed_product_clues": [
+            {**observation("遮阳棚替换布", "商品卡片主图"),
+             "occurrences": [occurrence("a.png", "商品卡片主图")]},
+            {**observation("Micro SD/CCTV 存储卡", "场景中偶然出现"),
+             "occurrences": [occurrence("a.png", "场景中偶然出现")]},
+        ],
+    })
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), str(tmp_path / "manifest.json")],
+        check=True, capture_output=True, text=True, encoding="utf-8",
+    )
+    run = json.loads(result.stdout)["runs"][0]
+
+    assert run["stages"]["direction"] == "ready"
+    assert run["stages"]["analysis"] == "waiting_model"
+    assert "analysis_input.json" in run["analysis_command"]
+    payload = json.loads((base / "analysis_input.json").read_text(encoding="utf-8"))
+    assert [item["clue"] for item in payload["observed_product_clues"]] == ["遮阳棚替换布"]
+    assert [item["clue"] for item in payload["excluded_product_clues"]] == ["Micro SD/CCTV 存储卡"]
 
 
 def test_retrieval_outputs_pair_by_input_order_and_reject_overlap(tmp_path) -> None:

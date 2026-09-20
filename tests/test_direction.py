@@ -1,8 +1,13 @@
 import json
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
+
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "direction.py"
+sys.path.insert(0, str(SCRIPT.parent))
 
 from direction import (
     BUCKET_EXCLUDED,
@@ -11,6 +16,8 @@ from direction import (
     apply_overrides,
     bucket_clue,
     bucket_clues,
+    build_analysis_input,
+    find_purity_violations,
     load_overrides,
     save_overrides,
     selected_clues,
@@ -19,15 +26,33 @@ from direction import (
 
 def clue(name: str, roles: list[str], confidence: float = 0.9, images: list[str] | None = None) -> dict:
     filenames = images or [f"img{index}.png" for index in range(len(roles))]
+    occurrences = [
+        {"image": filename, "role": role, "confidence": confidence, "evidence": "依据"}
+        for filename, role in zip(filenames, roles, strict=True)
+    ]
     return {
         "clue": name,
+        "role": max(roles, key=lambda role: {"商品卡片主图": 2, "不确定": 1, "场景中偶然出现": 0}[role]),
         "confidence": confidence,
+        "evidence": "依据",
         "source_image": filenames,
-        "occurrences": [
-            {"image": filename, "role": role, "confidence": confidence, "evidence": "依据"}
-            for filename, role in zip(filenames, roles, strict=True)
-        ],
+        "occurrences": occurrences,
     }
+
+
+def sample(clues: list[dict]) -> dict:
+    return {"store": {"country": "PH", "store_name": "Shopee-13021PH"},
+            "observed_product_clues": clues,
+            "limitations": ["商品线索仅来自本次截图中可见内容。"]}
+
+
+def analysis(scenes: dict[str, list[str]]) -> dict:
+    return {"scenes": [
+        {"scene_name": name, "product_needs": [
+            {"product_cn": product, "product_en": "", "purpose": "用途"} for product in products
+        ]}
+        for name, products in scenes.items()
+    ]}
 
 
 def test_card_image_goes_to_main() -> None:
@@ -148,16 +173,142 @@ def test_invalid_override_file_is_rejected(tmp_path) -> None:
         load_overrides(path)
 
 
-def test_real_store_clues_split_the_outdoor_shop_from_its_incidentals() -> None:
-    """Shape taken from Shopee-13021PH, the store that motivated the gate:
-    an outdoor listing that also carried an SD card and a merged blob."""
-    review = bucket_clues([
+def test_analysis_input_keeps_only_the_confirmed_direction() -> None:
+    store = sample([
         clue("遮阳棚替换布、遮阳网", ["商品卡片主图", "商品卡片主图"]),
-        clue("便携 BBQ 烤架/不锈钢折叠烤炉桌", ["商品卡片主图", "商品卡片主图"]),
         clue("Micro SD/CCTV 存储卡", ["场景中偶然出现"]),
-        clue("焊机、电钻等电动工具", ["不确定"], confidence=0.5),
     ])
 
-    assert selected_clues(review) == ["遮阳棚替换布、遮阳网", "便携 BBQ 烤架/不锈钢折叠烤炉桌"]
-    assert review["counts"][BUCKET_EXCLUDED] == 1
-    assert review["counts"][BUCKET_UNSURE] == 1
+    payload = build_analysis_input(store, bucket_clues(store["observed_product_clues"]),
+                                   direction="户外庭院")
+
+    assert [item["clue"] for item in payload["observed_product_clues"]] == ["遮阳棚替换布、遮阳网"]
+    assert payload["observed_product_clues"][0]["evidence"] == "依据"
+    assert payload["store_direction"] == "户外庭院"
+    assert "不得出现在任何场景" in payload["direction_note"]
+    assert payload["schema"] == "store-analysis-input-v1"
+
+
+def test_excluded_clue_reaches_the_model_with_its_reason() -> None:
+    store = sample([
+        clue("遮阳棚替换布、遮阳网", ["商品卡片主图"]),
+        clue("Micro SD/CCTV 存储卡", ["场景中偶然出现"]),
+    ])
+
+    payload = build_analysis_input(store, bucket_clues(store["observed_product_clues"]))
+
+    assert payload["store_direction"] is None
+    assert [item["clue"] for item in payload["excluded_product_clues"]] == ["Micro SD/CCTV 存储卡"]
+    assert "从未作为商品主图展示" in payload["excluded_product_clues"][0]["reason"]
+    assert payload["limitations"] == ["商品线索仅来自本次截图中可见内容。"]
+
+
+def test_operator_promotion_moves_a_clue_into_the_direction() -> None:
+    store = sample([
+        clue("遮阳棚替换布、遮阳网", ["商品卡片主图"]),
+        clue("Micro SD/CCTV 存储卡", ["场景中偶然出现"]),
+    ])
+    review = apply_overrides(
+        bucket_clues(store["observed_product_clues"]), {"Micro SD/CCTV 存储卡": BUCKET_MAIN}
+    )
+
+    payload = build_analysis_input(store, review)
+
+    assert [item["clue"] for item in payload["observed_product_clues"]] == [
+        "遮阳棚替换布、遮阳网", "Micro SD/CCTV 存储卡",
+    ]
+    assert payload["excluded_product_clues"] == []
+
+
+def test_purity_check_flags_a_scene_that_brought_back_an_excluded_product() -> None:
+    scene = analysis({
+        "家庭安防与存储扩展": ["监控存储卡", "遮阳伞"],
+        "庭院遮阳": ["遮阳伞"],
+    })
+
+    violations = find_purity_violations(scene, ["Micro SD/CCTV 存储卡"])
+
+    assert violations == [{
+        "scene_name": "家庭安防与存储扩展",
+        "product_cn": "监控存储卡",
+        "excluded_clue": "Micro SD/CCTV 存储卡",
+    }]
+
+
+def test_purity_check_stays_quiet_when_only_direction_products_appear() -> None:
+    scene = analysis({"庭院遮阳": ["遮阳伞", "折叠露营椅"], "户外烧烤": ["便携 BBQ 烤架"]})
+
+    assert find_purity_violations(scene, ["Micro SD/CCTV 存储卡"]) == []
+
+
+def test_direction_cli_writes_both_artifacts(tmp_path) -> None:
+    store_dir = tmp_path / "row017-shopee-13021ph"
+    store_dir.mkdir()
+    (store_dir / "sample_store.json").write_text(json.dumps(sample([
+        clue("遮阳棚替换布、遮阳网", ["商品卡片主图", "商品卡片主图"]),
+        clue("Micro SD/CCTV 存储卡", ["场景中偶然出现"]),
+        clue("焊机、电钻等电动工具", ["不确定"], confidence=0.5),
+    ]), ensure_ascii=False), encoding="utf-8")
+
+    run = subprocess.run(
+        [sys.executable, str(SCRIPT), str(store_dir), "--direction", "户外庭院"],
+        check=True, capture_output=True, text=True, encoding="utf-8",
+    )
+    report = json.loads(run.stdout)
+    direction = json.loads((store_dir / "direction.json").read_text(encoding="utf-8"))
+    payload = json.loads((store_dir / "analysis_input.json").read_text(encoding="utf-8"))
+
+    assert report["counts"] == {BUCKET_MAIN: 1, BUCKET_UNSURE: 1, BUCKET_EXCLUDED: 1}
+    assert direction["schema"] == "store-direction-v1"
+    assert [item["clue"] for item in payload["observed_product_clues"]] == ["遮阳棚替换布、遮阳网"]
+    assert [item["clue"] for item in payload["excluded_product_clues"]] == ["Micro SD/CCTV 存储卡"]
+
+
+def test_direction_cli_applies_an_operator_override_file(tmp_path) -> None:
+    store_dir = tmp_path / "row017-shopee-13021ph"
+    store_dir.mkdir()
+    (store_dir / "sample_store.json").write_text(json.dumps(sample([
+        clue("遮阳棚替换布、遮阳网", ["商品卡片主图"]),
+        clue("Micro SD/CCTV 存储卡", ["场景中偶然出现"]),
+    ]), ensure_ascii=False), encoding="utf-8")
+    save_overrides(store_dir / "direction_overrides.json", {"Micro SD/CCTV 存储卡": BUCKET_MAIN})
+
+    subprocess.run([sys.executable, str(SCRIPT), str(store_dir)],
+                   check=True, capture_output=True, text=True, encoding="utf-8")
+    payload = json.loads((store_dir / "analysis_input.json").read_text(encoding="utf-8"))
+
+    assert [item["clue"] for item in payload["observed_product_clues"]] == [
+        "遮阳棚替换布、遮阳网", "Micro SD/CCTV 存储卡",
+    ]
+    assert payload["excluded_product_clues"] == []
+
+
+def test_real_store_needs_the_operator_because_the_role_tags_stay_neutral() -> None:
+    """Shape taken from Shopee-13021PH, the store that motivated the gate.
+
+    Both of its screenshots are product grids, so its SD card and welding tools
+    sit on listing cards exactly like the sunshade does. The role tags cannot
+    tell that this shop's direction is outdoor — nothing about the pixels says
+    so. Only the operator can, which is why the override file exists and why the
+    gate must never pretend the tags settled the question.
+    """
+    store = sample([
+        clue("遮阳棚替换布、遮阳网", ["商品卡片主图", "商品卡片主图"]),
+        clue("Micro SD/CCTV 存储卡", ["商品卡片主图"]),
+        clue("焊机、电钻等电动工具", ["商品卡片主图", "商品卡片主图"]),
+    ])
+
+    review = bucket_clues(store["observed_product_clues"])
+
+    assert review["counts"][BUCKET_MAIN] == 3
+    assert selected_clues(review) == [
+        "遮阳棚替换布、遮阳网", "Micro SD/CCTV 存储卡", "焊机、电钻等电动工具",
+    ]
+
+    review = apply_overrides(review, {
+        "Micro SD/CCTV 存储卡": BUCKET_EXCLUDED,
+        "焊机、电钻等电动工具": BUCKET_EXCLUDED,
+    })
+
+    assert [item["clue"] for item in
+            build_analysis_input(store, review)["observed_product_clues"]] == ["遮阳棚替换布、遮阳网"]

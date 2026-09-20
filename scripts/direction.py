@@ -15,8 +15,10 @@ call cannot make, and it is cheap to re-run whenever the thresholds change.
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
+import re
 import tempfile
 
 
@@ -32,6 +34,16 @@ DEFAULT_MIN_CONFIDENCE = 0.6
 LOW_CONFIDENCE_THRESHOLD = 0.6
 LOW_CONFIDENCE_SHARE_WARNING = 0.4
 SCHEMA = "store-direction-v1"
+SCHEMA_ANALYSIS_INPUT = "store-analysis-input-v1"
+
+DIRECTION_NOTE = (
+    "observed_product_clues 是本店已确认的主营方向，场景只能围绕它们展开。"
+    "excluded_product_clues 是不属于本店方向的商品：不得作为 current_product_structure 的支柱，"
+    "也不得出现在任何场景的 product_needs 里。"
+)
+
+_LATIN = re.compile(r"[0-9a-z]{2,}")
+_HAN = re.compile(r"[一-鿿]{2,}")
 
 
 def bucket_clue(clue: dict, *, min_confidence: float = DEFAULT_MIN_CONFIDENCE) -> dict:
@@ -121,6 +133,84 @@ def selected_clues(review: dict, buckets: tuple[str, ...] = (BUCKET_MAIN,)) -> l
     ]
 
 
+def build_analysis_input(sample: dict, review: dict, *, direction: str | None = None) -> dict:
+    """Narrow a store sample down to the clues the store's direction allows.
+
+    The scene generator used to receive every product the screenshots happened
+    to contain, so an outdoor shop's SD card became a scene of its own. Feed it
+    the confirmed direction instead, and name what was ruled out so the model
+    cannot quietly bring it back.
+    """
+    by_name = {clue.get("clue"): clue for clue in sample.get("observed_product_clues") or []}
+    observed = [
+        {
+            "clue": by_name[entry["clue"]].get("clue"),
+            "role": by_name[entry["clue"]].get("role"),
+            "confidence": by_name[entry["clue"]].get("confidence"),
+            "evidence": by_name[entry["clue"]].get("evidence"),
+        }
+        for entry in review["entries"]
+        if entry["bucket"] == BUCKET_MAIN
+    ]
+    return {
+        "schema": SCHEMA_ANALYSIS_INPUT,
+        "store": sample.get("store") or {},
+        "store_direction": direction,
+        "direction_note": DIRECTION_NOTE,
+        "observed_product_clues": observed,
+        "excluded_product_clues": [
+            {"clue": entry["clue"], "reason": entry["reason"]}
+            for entry in review["entries"]
+            if entry["bucket"] == BUCKET_EXCLUDED
+        ],
+        "limitations": list(sample.get("limitations") or []),
+    }
+
+
+def find_purity_violations(analysis: dict, excluded: list[str]) -> list[dict]:
+    """Report product needs that mention a clue the direction gate excluded.
+
+    A soft signal for the operator, never a reason to throw away a result that
+    has already been paid for. Matching is heuristic — a latin run of the
+    excluded name has to reappear (``CCTV``), a Chinese run has to be contained
+    in one the model wrote (``存储卡`` inside ``监控存储卡``) — so an alias the
+    model invented can still slip through, and a neighbouring accessory may be
+    flagged for a glance.
+    """
+    violations = []
+    for scene in analysis.get("scenes") or []:
+        for product in scene.get("product_needs") or []:
+            text = " ".join(str(product.get(field, "")) for field in ("product_cn", "product_en"))
+            violations.extend(
+                {
+                    "scene_name": scene.get("scene_name"),
+                    "product_cn": product.get("product_cn"),
+                    "excluded_clue": name,
+                }
+                for name in excluded
+                if _mentions(text, name)
+            )
+    return violations
+
+
+def _mentions(text: str, name: str) -> bool:
+    text, name = str(text).lower(), str(name).lower()
+    if set(_LATIN.findall(name)) & set(_LATIN.findall(text)):
+        return True
+    runs = _HAN.findall(text)
+    return any(chunk in run for chunk in _HAN.findall(name) for run in runs)
+
+
+def write_json(path: Path, value: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, delete=False, suffix=".tmp"
+    ) as handle:
+        json.dump(value, handle, ensure_ascii=False, indent=2)
+        temporary = Path(handle.name)
+    temporary.replace(path)
+
+
 def load_overrides(path: Path) -> dict[str, str]:
     if not path.is_file():
         return {}
@@ -134,11 +224,46 @@ def load_overrides(path: Path) -> dict[str, str]:
 
 
 def save_overrides(path: Path, overrides: dict[str, str]) -> None:
-    payload = {"schema": "direction-overrides-v1", "overrides": dict(sorted(overrides.items()))}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", dir=path.parent, delete=False, suffix=".tmp"
-    ) as handle:
-        json.dump(payload, handle, ensure_ascii=False, indent=2)
-        temporary = Path(handle.name)
-    temporary.replace(path)
+    write_json(path, {
+        "schema": "direction-overrides-v1",
+        "overrides": dict(sorted(overrides.items())),
+    })
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("store_dir", type=Path, help="Directory holding sample_store.json")
+    parser.add_argument("--overrides", type=Path, help="Defaults to <store_dir>/direction_overrides.json")
+    parser.add_argument("--direction", help="Operator's name for the store's direction")
+    parser.add_argument("--min-confidence", type=float, default=DEFAULT_MIN_CONFIDENCE)
+    args = parser.parse_args()
+
+    store_dir = args.store_dir.resolve()
+    sample = json.loads((store_dir / "sample_store.json").read_text(encoding="utf-8"))
+    review = bucket_clues(
+        sample.get("observed_product_clues") or [], min_confidence=args.min_confidence
+    )
+    overrides_path = args.overrides or store_dir / "direction_overrides.json"
+    review = apply_overrides(review, load_overrides(overrides_path))
+
+    direction_path = store_dir / "direction.json"
+    input_path = store_dir / "analysis_input.json"
+    write_json(direction_path, review)
+    write_json(input_path, build_analysis_input(sample, review, direction=args.direction))
+    report = {
+        "store_dir": str(store_dir),
+        "direction": str(direction_path),
+        "analysis_input": str(input_path),
+        "counts": review["counts"],
+        "role_tag_health": review["role_tag_health"],
+    }
+    if not review["counts"][BUCKET_MAIN]:
+        report["hint"] = (
+            "没有任何商品被确认为主营方向。识别结果缺少 role 标注时会出现这种情况："
+            "重跑识别，或在 direction_overrides.json 里手动指定。"
+        )
+    print(json.dumps(report, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

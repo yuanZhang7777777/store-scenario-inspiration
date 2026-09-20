@@ -4,6 +4,9 @@ Directory contract (paths are relative to the manifest directory):
 
   manifest.json
   stores/<store-id>/sample_store.json
+  stores/<store-id>/direction.json          (local, always regenerated)
+  stores/<store-id>/analysis_input.json     (local, direction-filtered)
+  stores/<store-id>/direction_overrides.json (optional operator corrections)
   stores/<store-id>/<model>_analysis.json
   stores/<store-id>/<model>_expansions.json
   stores/<store-id>/retrieval/<model>_retrieval.json
@@ -26,7 +29,16 @@ import sys
 
 
 SCRIPTS = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS))
+
+from direction import BUCKET_MAIN  # noqa: E402
+
+
 SAFE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
+NO_DIRECTION_HINT = (
+    "没有任何商品被确认为主营方向，无法生成场景。"
+    "先重跑识别以拿到 role 标注，或在 direction_overrides.json 里手动指定。"
+)
 ANALYSIS_FIELDS = {
     "model", "manager_summary", "store_profile", "audiences",
     "current_product_structure", "future_product_structure",
@@ -105,6 +117,8 @@ def artifact_paths(root: Path, store_id: str, model: str) -> dict[str, Path]:
     base = root / "stores" / store_id
     return {
         "store": base / "sample_store.json",
+        "direction": base / "direction.json",
+        "analysis_input": base / "analysis_input.json",
         "analysis": base / f"{model}_analysis.json",
         "expansions": base / f"{model}_expansions.json",
         "retrieval": base / "retrieval" / f"{model}_retrieval.json",
@@ -154,16 +168,29 @@ def main() -> None:
             country = str(entry.get("country") or store["store"]["country"]).strip()
             status = {"store": store_id, "model": model, "country": country, "stages": {}}
 
+            direction_command = local_command("direction.py", paths["store"].parent)
+            status["direction_command"] = command_text(direction_command)
+            if not args.validate_only:
+                run(direction_command, enabled=True)
+            status["stages"]["direction"] = "ready" if paths["direction"].exists() else "failed"
+            confirmed = (read_json(paths["direction"]).get("counts", {}).get(BUCKET_MAIN, 0)
+                         if paths["direction"].exists() else 0)
+
             if paths["analysis"].exists():
                 validate_analysis(paths["analysis"])
                 status["stages"]["analysis"] = "ready"
-            else:
+            elif not confirmed:
+                status["stages"]["analysis"] = "blocked_by_direction"
+                status["analysis_hint"] = NO_DIRECTION_HINT
+            elif paths["analysis_input"].exists():
                 status["stages"]["analysis"] = "waiting_model"
                 if model == "deepseek":
                     status["analysis_command"] = command_text(local_command(
-                        "deepseek_store_analysis.py", "--input", paths["store"],
+                        "deepseek_store_analysis.py", "--input", paths["analysis_input"],
                         "--output", paths["analysis"],
                     ))
+            else:
+                status["stages"]["analysis"] = "blocked_by_direction"
 
             if paths["expansions"].exists():
                 validate_expansions(paths["expansions"])
