@@ -78,10 +78,37 @@ def test_pipeline_applies_the_direction_gate_before_analysis(tmp_path) -> None:
 
     assert run["stages"]["direction"] == "ready"
     assert run["stages"]["analysis"] == "waiting_model"
+    assert "direction_hint" not in run
     assert "analysis_input.json" in run["analysis_command"]
     payload = json.loads((base / "analysis_input.json").read_text(encoding="utf-8"))
+    assert payload["direction_confirmed"] is True
     assert [item["clue"] for item in payload["observed_product_clues"]] == ["遮阳棚替换布"]
     assert [item["clue"] for item in payload["excluded_product_clues"]] == ["Micro SD/CCTV 存储卡"]
+
+
+def test_pipeline_still_runs_when_no_direction_is_confirmed(tmp_path) -> None:
+    """A store nobody has sorted must not stall. It gets a hint, not a block."""
+    base = tmp_path / "stores" / "row-1"
+    write(tmp_path / "manifest.json", {"models": ["deepseek"], "stores": [{"id": "row-1"}]})
+    write(base / "sample_store.json", {
+        "store": {"country": "PH"},
+        "observed_product_clues": [
+            {**observation("焊机、电钻等电动工具", "不确定"),
+             "occurrences": [occurrence("a.png", "不确定")]},
+        ],
+    })
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), str(tmp_path / "manifest.json")],
+        check=True, capture_output=True, text=True, encoding="utf-8",
+    )
+    run = json.loads(result.stdout)["runs"][0]
+
+    assert run["stages"]["analysis"] == "waiting_model"
+    assert "可以试试" in run["direction_hint"]
+    payload = json.loads((base / "analysis_input.json").read_text(encoding="utf-8"))
+    assert payload["direction_confirmed"] is False
+    assert [item["clue"] for item in payload["observed_product_clues"]] == ["焊机、电钻等电动工具"]
 
 
 def test_retrieval_outputs_pair_by_input_order_and_reject_overlap(tmp_path) -> None:

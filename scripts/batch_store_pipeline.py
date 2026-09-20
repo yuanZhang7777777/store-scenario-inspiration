@@ -29,15 +29,10 @@ import sys
 
 
 SCRIPTS = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPTS))
-
-from direction import BUCKET_MAIN  # noqa: E402
-
-
 SAFE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 NO_DIRECTION_HINT = (
-    "没有任何商品被确认为主营方向，无法生成场景。"
-    "先重跑识别以拿到 role 标注，或在 direction_overrides.json 里手动指定。"
+    "还没有商品被确认属于本店方向，场景会照常生成，但都只是「可以试试」的建议。"
+    "想收窄方向就在 direction_overrides.json 里勾选，或在界面上改。"
 )
 ANALYSIS_FIELDS = {
     "model", "manager_summary", "store_profile", "audiences",
@@ -173,17 +168,14 @@ def main() -> None:
             if not args.validate_only:
                 run(direction_command, enabled=True)
             status["stages"]["direction"] = "ready" if paths["direction"].exists() else "failed"
-            confirmed = (read_json(paths["direction"]).get("counts", {}).get(BUCKET_MAIN, 0)
-                         if paths["direction"].exists() else 0)
 
             if paths["analysis"].exists():
                 validate_analysis(paths["analysis"])
                 status["stages"]["analysis"] = "ready"
-            elif not confirmed:
-                status["stages"]["analysis"] = "blocked_by_direction"
-                status["analysis_hint"] = NO_DIRECTION_HINT
             elif paths["analysis_input"].exists():
                 status["stages"]["analysis"] = "waiting_model"
+                if not read_json(paths["analysis_input"]).get("direction_confirmed"):
+                    status["direction_hint"] = NO_DIRECTION_HINT
                 if model == "deepseek":
                     status["analysis_command"] = command_text(local_command(
                         "deepseek_store_analysis.py", "--input", paths["analysis_input"],

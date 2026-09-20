@@ -42,6 +42,13 @@ DIRECTION_NOTE = (
     "也不得出现在任何场景的 product_needs 里。"
 )
 
+UNCONFIRMED_NOTE = (
+    "direction_confirmed 为 false：还没有任何商品被确认属于本店方向，"
+    "observed_product_clues 只是截图中可见的全部商品，不代表本店主营。"
+    "照常生成场景，但不要假设它们都是本店方向。"
+    "excluded_product_clues 为空表示没有商品被排除，不代表全部商品都被采纳。"
+)
+
 _LATIN = re.compile(r"[0-9a-z]{2,}")
 _HAN = re.compile(r"[一-鿿]{2,}")
 
@@ -134,34 +141,41 @@ def selected_clues(review: dict, buckets: tuple[str, ...] = (BUCKET_MAIN,)) -> l
 
 
 def build_analysis_input(sample: dict, review: dict, *, direction: str | None = None) -> dict:
-    """Narrow a store sample down to the clues the store's direction allows.
+    """Project a store sample down to the direction it should be read through.
 
     The scene generator used to receive every product the screenshots happened
-    to contain, so an outdoor shop's SD card became a scene of its own. Feed it
-    the confirmed direction instead, and name what was ruled out so the model
+    to contain, so an off-direction item could become a scene of its own. Feed
+    it the confirmed direction instead, and name what was ruled out so the model
     cannot quietly bring it back.
+
+    Confirming a direction stays optional. When nothing is confirmed — a fresh
+    store, or one whose screenshots are a general-merchandise grid — the default
+    path still has to produce scenes for an operator to judge, so pass
+    everything through and say the direction is unconfirmed rather than handing
+    the model an empty store.
     """
     by_name = {clue.get("clue"): clue for clue in sample.get("observed_product_clues") or []}
-    observed = [
-        {
-            "clue": by_name[entry["clue"]].get("clue"),
-            "role": by_name[entry["clue"]].get("role"),
-            "confidence": by_name[entry["clue"]].get("confidence"),
-            "evidence": by_name[entry["clue"]].get("evidence"),
-        }
-        for entry in review["entries"]
-        if entry["bucket"] == BUCKET_MAIN
-    ]
+    confirmed = [entry for entry in review["entries"] if entry["bucket"] == BUCKET_MAIN]
+    kept = confirmed or review["entries"]
     return {
         "schema": SCHEMA_ANALYSIS_INPUT,
         "store": sample.get("store") or {},
         "store_direction": direction,
-        "direction_note": DIRECTION_NOTE,
-        "observed_product_clues": observed,
+        "direction_confirmed": bool(confirmed),
+        "direction_note": DIRECTION_NOTE if confirmed else UNCONFIRMED_NOTE,
+        "observed_product_clues": [
+            {
+                "clue": by_name[entry["clue"]].get("clue"),
+                "role": by_name[entry["clue"]].get("role"),
+                "confidence": by_name[entry["clue"]].get("confidence"),
+                "evidence": by_name[entry["clue"]].get("evidence"),
+            }
+            for entry in kept
+        ],
         "excluded_product_clues": [
             {"clue": entry["clue"], "reason": entry["reason"]}
             for entry in review["entries"]
-            if entry["bucket"] == BUCKET_EXCLUDED
+            if entry["bucket"] == BUCKET_EXCLUDED and confirmed
         ],
         "limitations": list(sample.get("limitations") or []),
     }
@@ -259,8 +273,8 @@ def main() -> None:
     }
     if not review["counts"][BUCKET_MAIN]:
         report["hint"] = (
-            "没有任何商品被确认为主营方向。识别结果缺少 role 标注时会出现这种情况："
-            "重跑识别，或在 direction_overrides.json 里手动指定。"
+            "还没有商品被确认属于本店方向，场景会照常生成，但都只是「可以试试」的建议。"
+            "识别结果缺少 role 标注，或店里本来什么都卖，都会走到这里。"
         )
     print(json.dumps(report, ensure_ascii=False))
 

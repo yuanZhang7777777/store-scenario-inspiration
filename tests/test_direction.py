@@ -185,8 +185,25 @@ def test_analysis_input_keeps_only_the_confirmed_direction() -> None:
     assert [item["clue"] for item in payload["observed_product_clues"]] == ["遮阳棚替换布、遮阳网"]
     assert payload["observed_product_clues"][0]["evidence"] == "依据"
     assert payload["store_direction"] == "户外庭院"
+    assert payload["direction_confirmed"] is True
     assert "不得出现在任何场景" in payload["direction_note"]
     assert payload["schema"] == "store-analysis-input-v1"
+
+
+def test_unconfirmed_direction_passes_everything_through_with_a_warning() -> None:
+    """Confirming a direction is optional. A store nobody has sorted yet — or a
+    general-merchandise grid that cannot be sorted from pixels — still has to
+    produce scenes for an operator to judge, so the default path keeps every
+    clue and says out loud that none of it is confirmed."""
+    store = sample([clue("遮阳棚替换布、遮阳网", ["不确定"], confidence=0.4)])
+    review = bucket_clues(store["observed_product_clues"])
+    payload = build_analysis_input(store, review)
+
+    assert review["counts"][BUCKET_MAIN] == 0
+    assert payload["direction_confirmed"] is False
+    assert [item["clue"] for item in payload["observed_product_clues"]] == ["遮阳棚替换布、遮阳网"]
+    assert payload["excluded_product_clues"] == []
+    assert "不代表本店主营" in payload["direction_note"]
 
 
 def test_excluded_clue_reaches_the_model_with_its_reason() -> None:
