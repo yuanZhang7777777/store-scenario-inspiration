@@ -1,6 +1,10 @@
 # Catalog Retrieval Foundation Implementation Plan
 
-> **状态（2026-09-17）：已被产品资产新口径取代，不应继续照此执行。** 当前权威口径见设计规格第 18 节：活跃商品范围改为库存中心 `平销款/利润款/引流款`，唯一事实表为 `E:\Project\store-assortment-copilot\var\product-asset\catalog.sqlite3`。本文的 8,550 主 SKU、中文单路向量文本和全量 ERP 构建步骤仅保留为历史方案。
+> **状态（2026-09-17）：已完成，且已被产品资产新口径取代，不应继续照此执行。**
+>
+> 本文记录的是最初的关键词检索底座任务，因此其中"仅关键词、无向量检索"的描述是当时的交接状态。之后已在 commit `34808a1` 补充了本地 BGE 向量、Codex 正向扩写、加权多查询 RRF 和可配置 Top 1–50 检索；当前行为以 `README.md` 和设计规格为准。
+>
+> 活跃商品范围也已改为库存中心口径，唯一事实表为 `E:\Project\store-assortment-copilot\var\product-asset\catalog.sqlite3`（见设计规格第 18 节）。本文的 8,550 主 SKU、中文单路向量文本和全量 ERP 构建步骤仅保留为历史方案。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -672,9 +676,9 @@ Expected: FAIL because `CatalogIndexManager` does not exist.
 
 - [ ] **Step 3: Implement staged version creation**
 
-Calculate source SHA-256 before reading. Skip only when source hash, document schema version, cleaning-rules version, and embedding model ID all equal the active manifest; a code-rule or model change must rebuild even when Excel is unchanged. Otherwise build under `versions/.staging-<uuid>`, write SQLite, optional vectors, manifest, and quality report, fsync files, rename the staging directory to its final version ID, then replace `active.json` through `active.json.tmp` using `os.replace`. Update `previous.json` only after the new version directory is complete.
+Calculate source SHA-256 and UTC modification time before reading. Skip only when source hash, modification time, exact requested sheet selector (or auto/null), document schema version, cleaning-rules version, and embedding model ID all equal the active manifest; a code-rule, model, or sheet change must rebuild even when Excel bytes are unchanged. Otherwise build under `versions/.staging-<uuid>`, write SQLite, optional vectors, manifest, and quality report, fsync files, rename the staging directory to its final version ID, then replace `active.json` through `active.json.tmp` using `os.replace`. Update `previous.json` only after the new version directory is complete.
 
-Build identity is SHA-256 of source hash, schema version, cleaning-rules version, and embedding model ID. Version ID format is UTC `YYYYMMDDTHHMMSSZ-<first 12 build-identity characters>`. A provider-free build uses embedding model ID `none`, is valid, and reports `vector_status="absent"`; this allows the keyword baseline to be measured before choosing a real embedding provider.
+Build identity is SHA-256 of source hash, source UTC modification time, exact requested sheet selector, schema version, cleaning-rules version, and embedding model ID. Version ID format is UTC `YYYYMMDDTHHMMSSZ-<first 12 build-identity characters>`. A provider-free build uses embedding model ID `none`, is valid, and reports `vector_status="absent"`; this allows the keyword baseline to be measured before choosing a real embedding provider.
 
 - [ ] **Step 4: Implement the CLI**
 

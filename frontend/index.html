@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>店铺场景选品分析</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17202f;
+      --muted: #647084;
+      --line: #dfe5ed;
+      --paper: #fff;
+      --soft: #f4f7fb;
+      --navy: #153e5b;
+      --teal: #087f73;
+      --teal-soft: #e2f5f1;
+      --amber: #b96513;
+      --amber-soft: #fff3d9;
+      --shadow: 0 12px 36px rgba(26, 48, 71, .09);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(180deg, #edf4f7 0, #f7f8fb 420px, #f7f8fb 100%);
+      font: 14px/1.65 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+    button { font: inherit; }
+    .shell { width: min(1440px, calc(100% - 32px)); margin: 0 auto 72px; }
+    .hero { padding: 42px 0 26px; display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; }
+    .eyebrow { margin: 0 0 8px; color: var(--teal); font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(28px, 4vw, 48px); line-height: 1.14; letter-spacing: -.035em; }
+    .subtitle { margin: 10px 0 0; color: var(--muted); font-size: 15px; }
+    .status {
+      max-width: 340px; padding: 13px 16px; border: 1px solid #f0d6a3; border-radius: 12px;
+      color: #7c460d; background: var(--amber-soft); font-weight: 700;
+    }
+    .card { background: rgba(255,255,255,.96); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); }
+    .store-switch { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .store-switch label { color: var(--navy); font-weight: 800; }
+    .store-switch select { min-width: min(480px, 70vw); padding: 10px 36px 10px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: white; }
+    .store-switch span { color: var(--muted); }
+    .store-card { padding: 22px; }
+    .meta-grid { display: grid; grid-template-columns: repeat(5, minmax(130px, 1fr)); gap: 14px; }
+    .meta { min-width: 0; padding: 12px 14px; background: var(--soft); border-radius: 11px; }
+    .meta span { display: block; color: var(--muted); font-size: 12px; }
+    .meta strong { display: block; margin-top: 2px; overflow-wrap: anywhere; }
+    .model-tabs { position: sticky; top: 0; z-index: 5; display: flex; gap: 8px; padding: 16px 0; backdrop-filter: blur(12px); }
+    .model-tabs button {
+      padding: 10px 18px; border: 1px solid var(--line); border-radius: 999px; color: var(--navy);
+      background: rgba(255,255,255,.88); cursor: pointer; font-weight: 750;
+    }
+    .model-tabs button[aria-selected="true"] { border-color: var(--navy); color: white; background: var(--navy); }
+    .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .manager-brief { position: relative; overflow: hidden; border-color: #bddfd8; background: linear-gradient(135deg, #f2fbf8, #fff 58%); }
+    .manager-brief::after { content: ""; position: absolute; width: 220px; height: 220px; right: -90px; top: -100px; border-radius: 50%; background: rgba(8,127,115,.08); }
+    .manager-brief h2 { max-width: 1050px; margin-bottom: 10px; font-size: clamp(23px, 3vw, 34px); line-height: 1.32; }
+    .manager-brief .lead { max-width: 1120px; margin: 0; color: #294153; font-size: 16px; line-height: 1.8; }
+    .metric-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 20px 0; }
+    .metric { padding: 13px 15px; border: 1px solid #cfe6e1; border-radius: 12px; background: rgba(255,255,255,.82); }
+    .metric strong { display: block; color: var(--teal); font-size: 23px; line-height: 1.2; }
+    .metric span { color: var(--muted); font-size: 12px; }
+    .brief-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 14px; }
+    .brief-block { padding: 15px 16px; border-radius: 12px; background: white; border: 1px solid #dce9e6; }
+    .brief-block h3 { color: var(--navy); }
+    .brief-block p { margin: 0; color: #344258; }
+    .action-list { margin: 0; padding-left: 21px; color: #344258; }
+    .action-list li + li { margin-top: 7px; }
+    .boundary { margin-top: 13px; padding: 11px 13px; border-left: 3px solid var(--amber); color: #71420e; background: var(--amber-soft); }
+    section.card { padding: 22px; margin-bottom: 16px; }
+    section h2 { margin: 0 0 14px; color: var(--navy); font-size: 20px; }
+    section h3 { margin: 0 0 7px; font-size: 16px; }
+    .prose { color: #344258; white-space: pre-wrap; }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 7px; }
+    .pill { padding: 4px 9px; border-radius: 999px; color: #11685f; background: var(--teal-soft); font-size: 12px; }
+    .people, .strategies { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+    .mini-card { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcfe; }
+    .mini-card p { margin: 4px 0 0; color: var(--muted); }
+    .section-lead { margin: -4px 0 16px; color: #40516a; font-size: 15px; }
+    .structure-list { display: grid; gap: 10px; }
+    .structure-item { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcfe; }
+    .structure-item h3 { color: var(--navy); }
+    .structure-item p { margin: 5px 0; color: #4d5d72; }
+    .evidence { margin-top: 8px; color: var(--muted); font-size: 12px; }
+    .scene-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+    .scene-card { padding: 16px; border: 1px solid var(--line); border-radius: 13px; background: linear-gradient(180deg, #fff, #f8fafc); }
+    .scene-card h3 { color: var(--navy); }
+    .scene-card p { margin: 7px 0; color: #40516a; }
+    .product-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .product-tag { padding: 3px 8px; border-radius: 999px; color: #11685f; background: var(--teal-soft); font-size: 12px; }
+    .technical { margin-top: 16px; border: 1px solid var(--line); border-radius: 14px; background: white; }
+    .technical > summary { padding: 14px 17px; cursor: pointer; color: var(--navy); font-weight: 800; }
+    .technical-body { padding: 0 16px 16px; }
+    .scene { margin-top: 14px; border: 1px solid var(--line); border-radius: 15px; overflow: hidden; }
+    .scene > summary { padding: 16px 18px; cursor: pointer; background: #f8fafc; font-size: 17px; font-weight: 800; }
+    .scene-body { padding: 18px; }
+    .scene-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+    .fact { padding: 12px; border-left: 3px solid var(--teal); background: var(--soft); }
+    .fact span { display: block; color: var(--muted); font-size: 12px; }
+    .need { margin-top: 14px; padding-top: 16px; border-top: 1px dashed var(--line); }
+    .need-title { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+    .need-title p { margin: 2px 0 0; color: var(--muted); }
+    .expansion { margin: 11px 0; padding: 11px 13px; border-radius: 10px; background: #eef5fb; }
+    .expansion b { color: var(--navy); }
+    .candidate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+    details.candidates { border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
+    details.candidates > summary { padding: 10px 12px; cursor: pointer; color: var(--navy); background: #fbfcfd; font-weight: 750; }
+    .table-wrap { max-height: 460px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { position: sticky; top: 0; z-index: 1; color: #526071; background: #eef2f6; text-align: left; }
+    th, td { padding: 8px 9px; border-bottom: 1px solid #e9edf2; vertical-align: top; }
+    td.sku { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-weight: 700; }
+    td.qty { color: var(--teal); font-weight: 800; text-align: right; }
+    .empty { padding: 14px; color: var(--muted); }
+    .warning { padding: 12px 14px; border-radius: 10px; color: #74450e; background: var(--amber-soft); }
+    .copy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 14px 0; }
+    .copy-panel { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcfe; }
+    .copy-panel label { display: block; margin-bottom: 7px; color: var(--navy); font-weight: 800; }
+    .copy-box { width: 100%; min-height: 150px; padding: 10px; resize: vertical; border: 1px solid var(--line); border-radius: 9px; background: white; font: 13px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .copy-actions { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+    .copy-button { padding: 6px 10px; border: 1px solid #afd8d1; border-radius: 8px; color: #0b675e; background: var(--teal-soft); cursor: pointer; font-weight: 750; }
+    .copy-button:hover { border-color: var(--teal); }
+    .copy-status { color: var(--teal); font-size: 12px; }
+    .recommendations { max-height: 560px; overflow: auto; border: 1px solid var(--line); border-radius: 11px; }
+    .loading, .error { margin-top: 40px; padding: 28px; text-align: center; }
+    @media (max-width: 900px) {
+      .hero, .summary-grid, .candidate-grid, .scene-facts, .brief-grid, .copy-grid { grid-template-columns: 1fr; }
+      .metric-strip { grid-template-columns: repeat(2, 1fr); }
+      .meta-grid { grid-template-columns: repeat(2, 1fr); }
+      .status { max-width: none; }
+    }
+    @media (max-width: 520px) {
+      .shell { width: min(100% - 18px, 1440px); }
+      .meta-grid { grid-template-columns: 1fr; }
+      section.card, .store-card { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">STORE ASSORTMENT PILOT</p>
+        <h1 id="title">店铺场景选品分析</h1>
+        <p class="subtitle" id="subtitle">加载店铺和召回结果…</p>
+      </div>
+      <div class="status" id="status">经营判断 → 场景机会 → 商品候选</div>
+    </header>
+
+    <div class="store-switch">
+      <label for="store-select">切换店铺</label>
+      <select id="store-select" aria-label="选择店铺"></select>
+      <span id="store-count"></span>
+    </div>
+    <div id="store" class="card store-card"></div>
+    <nav id="model-tabs" class="model-tabs" aria-label="模型分析切换"></nav>
+    <main id="content"><div class="card loading">正在读取本地结果…</div></main>
+  </div>
+
+  <script>
+    const labels = {
+      store_name: "店铺名字", ado: "ADO", adg: "ADG", real_store_name: "店铺真实名字",
+      country: "站点", store_attribute: "店铺属性", owner: "店铺负责人", department: "部门",
+      platform: "平台名称", group: "集团", platform_shop_id: "平台店铺 ID"
+    };
+    const esc = value => String(value ?? "—").replace(/[&<>"']/g, char => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[char]);
+    const text = value => {
+      if (value == null || value === "") return "—";
+      if (Array.isArray(value)) return value.map(text).join("\n");
+      if (typeof value === "object") return Object.entries(value)
+        .map(([key, item]) => `${key}: ${text(item)}`).join("\n");
+      return String(value);
+    };
+    const modelNames = { gpt55: "GPT-5.5", deepseek: "DeepSeek Flash" };
+    let data;
+    let storeIndex;
+    let currentStoreId;
+    let currentModel = "gpt55";
+
+    function renderStore(store) {
+      document.querySelector("#title").textContent = store.real_store_name || store.store_name || "店铺场景选品分析";
+      document.querySelector("#subtitle").textContent = `${store.country || "未知站点"} · ${store.platform || "未知平台"} · ${store.department || "未知部门"}`;
+      document.querySelector("#store").innerHTML = `<div class="meta-grid">${Object.entries(labels).map(([key, label]) => `
+        <div class="meta"><span>${esc(label)}</span><strong>${esc(store[key])}</strong></div>`).join("")}</div>`;
+    }
+
+    function renderModelTabs(models) {
+      const keys = Object.keys(models || {});
+      currentModel = keys.includes(currentModel) ? currentModel : keys[0];
+      document.querySelector("#model-tabs").innerHTML = keys.map(key => `
+        <button type="button" data-model="${esc(key)}" aria-selected="${key === currentModel}">${esc(modelNames[key] || key)}</button>
+      `).join("");
+    }
+
+    async function copyValue(value, button) {
+      if (!value) return;
+      try {
+        await navigator.clipboard.writeText(value);
+      } catch (_) {
+        const helper = document.createElement("textarea");
+        helper.value = value;
+        helper.style.position = "fixed";
+        helper.style.opacity = "0";
+        document.body.appendChild(helper);
+        helper.select();
+        document.execCommand("copy");
+        helper.remove();
+      }
+      const original = button.textContent;
+      button.textContent = "已复制";
+      setTimeout(() => { button.textContent = original; }, 1200);
+    }
+
+    function renderObject(value) {
+      if (value == null) return `<p class="prose">—</p>`;
+      if (typeof value === "string") return `<p class="prose">${esc(value)}</p>`;
+      return Object.entries(value).map(([key, item]) => `
+        <div class="mini-card"><strong>${esc(key)}</strong><p class="prose">${esc(text(item))}</p></div>`).join("");
+    }
+
+    function audienceCards(items) {
+      return (items || []).map(item => `
+        <div class="mini-card">
+          <h3>${esc(item.audience_name || item.audience_cn || item.audience_en)}</h3>
+          <p>${esc(item.need_summary || text(item))}</p>
+          ${item.evidence ? `<div class="evidence">依据：${esc(item.evidence)}</div>` : ""}
+        </div>`).join("") || `<p class="empty">暂无人群数据</p>`;
+    }
+
+    function strategyCards(items) {
+      return (items || []).map((item, index) => `
+        <div class="mini-card"><strong>动作 ${index + 1}</strong><p class="prose">${esc(
+          typeof item === "string" ? item : item.strategy_cn || item.strategy_en || text(item)
+        )}</p>${typeof item === "object" && item.evidence ? `<div class="evidence">依据：${esc(item.evidence)}</div>` : ""}</div>`).join("") || `<p class="empty">暂无策略数据</p>`;
+    }
+
+    function profileSummary(analysis) {
+      return analysis.store_profile?.profile_summary || analysis.store_profile?.positioning || "暂无店铺画像结论";
+    }
+
+    function currentSummary(analysis) {
+      return analysis.current_product_structure?.structure_summary || analysis.current_product_structure?.summary || "暂无当前结构结论";
+    }
+
+    function futureSummary(analysis) {
+      return analysis.future_product_structure?.recommended_direction || analysis.future_product_structure?.summary || "暂无未来结构结论";
+    }
+
+    function currentCategories(analysis) {
+      return analysis.current_product_structure?.confirmed_clue_categories || analysis.current_product_structure?.categories || [];
+    }
+
+    function futureDirections(analysis) {
+      return analysis.future_product_structure?.structure_layers || analysis.future_product_structure?.directions || [];
+    }
+
+    function evidenceNote(analysis) {
+      const profile = analysis.store_profile || {};
+      const current = analysis.current_product_structure || {};
+      return (profile.evidence_limitations || []).join("；") || profile.evidence_status || current.evidence_note || "";
+    }
+
+    function renderManagerBrief(analysis, retrieval) {
+      const brief = analysis.manager_summary || {};
+      const inventoryUnavailable = retrieval.inventory_coverage === "unavailable";
+      const actions = brief.recommended_actions || (analysis.operation_strategy || []).slice(0, 3).map(item =>
+        typeof item === "string" ? item : item.strategy_cn || item.strategy_en || text(item)
+      );
+      return `<section class="card manager-brief">
+        <p class="eyebrow">经理先看 · ${esc(analysis.model || "核心判断")}</p>
+        <h2>${esc(brief.executive_conclusion || profileSummary(analysis))}</h2>
+        <p class="lead">${esc(brief.business_opportunity || futureSummary(analysis))}</p>
+        <div class="metric-strip">
+          <div class="metric"><strong>${(analysis.scenes || []).length}</strong><span>需求场景</span></div>
+          <div class="metric"><strong>${(analysis.audiences || []).length}</strong><span>核心人群</span></div>
+          <div class="metric"><strong>${currentCategories(analysis).length}</strong><span>现有产品支柱</span></div>
+          <div class="metric"><strong>${(retrieval.recommended_main_skus || []).length}</strong><span>${inventoryUnavailable ? "语义候选（库存未覆盖）" : `${esc(retrieval.country || "目标国家")} 有货主 SKU`}</span></div>
+        </div>
+        <div class="brief-grid">
+          <div class="brief-block"><h3>为什么值得做</h3><p>${esc(currentSummary(analysis))}</p></div>
+          <div class="brief-block"><h3>下一步怎么做</h3><ol class="action-list">${actions.map(item => `<li>${esc(item)}</li>`).join("")}</ol></div>
+        </div>
+        ${brief.decision_boundary ? `<div class="boundary">决策边界：${esc(brief.decision_boundary)}</div>` : ""}
+      </section>`;
+    }
+
+    function renderProfile(analysis) {
+      const profile = analysis.store_profile || {};
+      const level = profile.business_level || { ado: profile.ado, adg: profile.adg };
+      return `<section class="card">
+        <h2>店铺画像</h2>
+        <p class="section-lead">${esc(profileSummary(analysis))}</p>
+        <div class="pill-row">
+          <span class="pill">${esc(profile.country || data.store.country)} · ${esc(profile.platform || data.store.platform)}</span>
+          <span class="pill">${esc(profile.store_attribute || data.store.store_attribute)}</span>
+          <span class="pill">ADO ${esc(level?.ado ?? data.store.ado)}</span>
+          <span class="pill">ADG ${esc(level?.adg ?? data.store.adg)}</span>
+        </div>
+        ${evidenceNote(analysis) ? `<div class="evidence">证据说明：${esc(evidenceNote(analysis))}</div>` : ""}
+      </section>`;
+    }
+
+    function structureCard(item, future = false) {
+      const title = item.category || item.category_cn || item.layer || item.direction_cn || "产品方向";
+      const body = item.role || item.focus || item.rationale || "";
+      const evidence = item.evidence || item.items || [];
+      return `<div class="structure-item"><h3>${esc(title)}</h3><p>${esc(body)}</p>
+        ${evidence?.length || typeof evidence === "string" ? `<div class="evidence">${future ? "依据" : "已见商品"}：${esc(Array.isArray(evidence) ? evidence.join("、") : evidence)}</div>` : ""}
+      </div>`;
+    }
+
+    function renderStructure(analysis) {
+      const current = analysis.current_product_structure || {};
+      const future = analysis.future_product_structure || {};
+      return `<section class="card"><h2>产品结构分析</h2>
+        <div class="summary-grid">
+          <div><h3>当下：店铺靠什么承接需求</h3><p class="section-lead">${esc(currentSummary(analysis))}</p>
+            <div class="structure-list">${currentCategories(analysis).map(item => structureCard(item)).join("")}</div></div>
+          <div><h3>未来：结构应该往哪里长</h3><p class="section-lead">${esc(futureSummary(analysis))}</p>
+            <div class="structure-list">${futureDirections(analysis).map(item => structureCard(item, true)).join("")}</div>
+            ${future.risk_note || future.evidence_note ? `<div class="evidence">边界：${esc(future.risk_note || future.evidence_note)}</div>` : ""}
+          </div>
+        </div>
+      </section>`;
+    }
+
+    function renderSceneMap(analysis) {
+      return `<section class="card"><h2>场景机会地图</h2>
+        <p class="section-lead">先明确用户在什么情况下要完成什么，再从场景里的产品需求进入公司商品库召回。</p>
+        <div class="scene-map">${(analysis.scenes || []).map((scene, index) => `<article class="scene-card">
+          <p class="eyebrow">场景 ${index + 1}</p><h3>${esc(scene.scene_name)}</h3>
+          <div class="pill-row"><span class="pill">${esc(scene.audience)}</span></div>
+          <p><strong>要解决：</strong>${esc(scene.user_need)}</p>
+          <div class="product-tags">${(scene.product_needs || []).map(item => `<span class="product-tag">${esc(item.product_cn)}</span>`).join("")}</div>
+          <ul class="action-list">${(scene.product_needs || []).map(item => `<li><strong>${esc(item.product_cn)}：</strong>${esc(item.purpose)}</li>`).join("")}</ul>
+          ${scene.evidence ? `<div class="evidence">依据：${esc(scene.evidence)}</div>` : ""}
+        </article>`).join("")}</div>
+      </section>`;
+    }
+
+    function candidateTable(candidates, title, open = false, showReview = false, quantityLabel = "国家可发量") {
+      const rows = (candidates || []).map(item => `
+        <tr>
+          <td>${esc(item.rank)}</td>
+          <td class="sku">${esc(item.main_sku)}</td>
+          <td>${esc(item.standard_name_cn)}</td>
+          <td>${esc(item.standard_name_en)}</td>
+          <td>${Number(item.rrf_score || 0).toFixed(4)}</td>
+          ${showReview ? `<td>${item.relevance == null ? "—" : esc(item.relevance)}</td><td>${esc(item.rerank_reason)}</td>` : ""}
+          <td class="qty">${item.country_available_quantity == null ? "—" : esc(item.country_available_quantity)}</td>
+        </tr>`).join("");
+      return `<details class="candidates" ${open ? "open" : ""}>
+        <summary>${esc(title)} · ${(candidates || []).length} 个</summary>
+        ${rows ? `<div class="table-wrap"><table>
+          <thead><tr><th>#</th><th>主 SKU</th><th>中文名称</th><th>英文名称</th><th>RRF</th>${showReview ? "<th>相关度</th><th>重排理由</th>" : ""}<th>${esc(quantityLabel)}</th></tr></thead>
+          <tbody>${rows}</tbody></table></div>` : `<div class="empty">暂无候选</div>`}
+      </details>`;
+    }
+
+    function renderRecommendations(retrieval) {
+      const inventoryUnavailable = retrieval.inventory_coverage === "unavailable";
+      const items = retrieval.recommended_main_skus || [];
+      const skuLines = items.map(item => item.main_sku).filter(Boolean).join("\n");
+      const nameLines = items.map(item => item.standard_name_cn).filter(Boolean).join("\n");
+      const rows = items.map((item, index) => `<tr>
+        <td>${index + 1}</td>
+        <td class="sku">${esc(item.main_sku)} <button type="button" class="copy-button" data-copy="${esc(item.main_sku)}">复制</button></td>
+        <td>${esc(item.standard_name_cn)} <button type="button" class="copy-button" data-copy="${esc(item.standard_name_cn)}">复制</button></td>
+        <td>${esc(item.standard_name_en)}</td>
+        <td class="qty">${item.country_available_quantity == null ? "—" : esc(item.country_available_quantity)}</td>
+      </tr>`).join("");
+      return `<section class="card"><h2>${inventoryUnavailable ? "语义候选主 SKU（库存未覆盖）" : "最终推荐主 SKU"}</h2>
+        <p class="section-lead">${inventoryUnavailable ? `当前库存源未覆盖 ${esc(retrieval.country || "目标国家")}，以下仅为语义候选，库存数量显示为—。` : `已按 ${esc(retrieval.country || "目标国家")} 库存过滤。`} 主 SKU 与中文名称分别按换行格式提供，可直接粘贴进表格单元格。</p>
+        <div class="copy-grid">
+          <div class="copy-panel"><label for="sku-copy-box">推荐主 SKU · ${items.length} 个</label>
+            <textarea id="sku-copy-box" class="copy-box" readonly>${esc(skuLines)}</textarea>
+            <div class="copy-actions"><button type="button" class="copy-button" data-copy-target="sku-copy-box">复制全部主 SKU</button></div>
+          </div>
+          <div class="copy-panel"><label for="name-copy-box">推荐中文名称 · ${items.length} 个</label>
+            <textarea id="name-copy-box" class="copy-box" readonly>${esc(nameLines)}</textarea>
+            <div class="copy-actions"><button type="button" class="copy-button" data-copy-target="name-copy-box">复制全部中文名称</button></div>
+          </div>
+        </div>
+        ${rows ? `<div class="recommendations"><table><thead><tr><th>#</th><th>主 SKU</th><th>中文名称</th><th>英文名称</th><th>${inventoryUnavailable ? "库存未覆盖" : `${esc(retrieval.country || "国家")} 可发量`}</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty">${inventoryUnavailable ? "暂无语义候选" : "暂无通过国家库存过滤的推荐商品"}</div>`}
+      </section>`;
+    }
+
+    function findProduct(scene, need) {
+      return (scene?.products || []).find(item =>
+        item.product_cn === need.product_cn || item.product_en === need.product_en
+      );
+    }
+
+    function renderNeed(need, match, country, inventoryCoverage) {
+      const inventoryUnavailable = inventoryCoverage === "unavailable";
+      const quantityLabel = inventoryUnavailable ? "库存未覆盖" : `${country || "目标国家"} 可发量`;
+      const cn = match?.expanded_cn || [];
+      const en = match?.expanded_en || [];
+      const related = match?.related_candidates || match?.global_candidates || [];
+      const countryRecommendations = match?.country_recommendations || match?.country_candidates || [];
+      const rawCandidates = match?.raw_global_candidates || match?.global_candidates || [];
+      return `<div class="need">
+        <div class="need-title"><div>
+          <h3>${esc(need.product_cn)} · ${esc(need.product_en)}</h3>
+          <p>${esc(need.purpose)}</p>
+        </div></div>
+        <div class="expansion"><b>检索前扩写</b><br>
+          中文：${esc([match?.canonical_cn, ...cn].filter(Boolean).join(" / "))}<br>
+          English：${esc([match?.canonical_en, ...en].filter(Boolean).join(" / "))}
+        </div>
+        <div class="candidate-grid">
+          ${candidateTable(related, "模型软重排相关候选", true, true, quantityLabel)}
+          ${candidateTable(countryRecommendations, inventoryUnavailable ? "库存未覆盖" : `${country || "目标国家"} 库存推荐`, true, true, quantityLabel)}
+        </div>
+        <div style="margin-top:12px">${candidateTable(rawCandidates, "原始高召回审计", false, false, quantityLabel)}</div>
+      </div>`;
+    }
+
+    function renderScenes(analysis, retrieval) {
+      const retrievalByName = new Map((retrieval.scenes || []).map(scene => [scene.scene_name, scene]));
+      return (analysis.scenes || []).map((scene, index) => {
+        const matchedScene = retrievalByName.get(scene.scene_name);
+        return `<details class="scene" ${index === 0 ? "open" : ""}>
+          <summary>${index + 1}. ${esc(scene.scene_name)}</summary>
+          <div class="scene-body">
+            <div class="scene-facts">
+              <div class="fact"><span>目标人群</span>${esc(scene.audience)}</div>
+              <div class="fact"><span>用户需求</span>${esc(scene.user_need)}</div>
+            </div>
+            ${(scene.product_needs || []).map(need => renderNeed(
+              need, findProduct(matchedScene, need), retrieval.country, retrieval.inventory_coverage
+            )).join("") || `<p class="empty">暂无商品需求</p>`}
+          </div>
+        </details>`;
+      }).join("") || `<p class="empty">暂无场景</p>`;
+    }
+
+    function renderModel(key) {
+      if (!data.models[key]) return;
+      currentModel = key;
+      document.querySelectorAll("[data-model]").forEach(button => {
+        button.setAttribute("aria-selected", String(button.dataset.model === key));
+      });
+      const { analysis, retrieval } = data.models[key];
+      const inventoryUnavailable = retrieval.inventory_coverage === "unavailable";
+      document.querySelector("#status").textContent = `${(analysis.scenes || []).length} 个场景 · ${(analysis.audiences || []).length} 类人群 · ${(retrieval.recommended_main_skus || []).length} 个 ${inventoryUnavailable ? "语义候选（库存未覆盖）" : `${retrieval.country || "目标国家"} 有货主 SKU`}`;
+      document.querySelector("#content").innerHTML = `
+        ${renderManagerBrief(analysis, retrieval)}
+        ${renderProfile(analysis)}
+        ${renderStructure(analysis)}
+        <section class="card"><h2>核心人群</h2><p class="section-lead">这些不是泛化标签，而是从当前商品线索反推的购买任务与内容沟通对象。</p><div class="people">${audienceCards(analysis.audiences)}</div></section>
+        <section class="card"><h2>运营策略</h2><p class="section-lead">把产品结构转成运营可以直接执行的内容、上新和复盘动作。</p><div class="strategies">${strategyCards(analysis.operation_strategy)}</div></section>
+        ${renderSceneMap(analysis)}
+        ${renderRecommendations(retrieval)}
+        <section class="card"><h2>推荐 SKU 与检索依据</h2>
+          <p class="warning">${inventoryUnavailable ? `场景先做中英文正向扩写，再经四路召回和模型软重排；当前库存源未覆盖 ${esc(retrieval.country || "目标国家")}，未判断库存。` : `场景先做中英文正向扩写，再经四路召回、模型软重排和 ${esc(retrieval.country || "目标国家")} 库存过滤。`}运营仍负责最终上架决定。</p>
+          <details class="technical"><summary>查看每个场景的扩写词、相关候选、库存状态和原始召回</summary><div class="technical-body">${renderScenes(analysis, retrieval)}</div></details>
+        </section>`;
+    }
+
+    document.querySelector("#model-tabs").addEventListener("click", event => {
+      const button = event.target.closest("[data-model]");
+      if (button) renderModel(button.dataset.model);
+    });
+
+    document.querySelector("#content").addEventListener("click", event => {
+      const button = event.target.closest("[data-copy], [data-copy-target]");
+      if (!button) return;
+      const source = button.dataset.copyTarget && document.getElementById(button.dataset.copyTarget);
+      copyValue(source ? source.value : button.dataset.copy, button);
+    });
+
+    function loadStore(storeId) {
+      currentStoreId = storeId;
+      document.querySelector("#content").innerHTML = `<div class="card loading">正在读取店铺结果…</div>`;
+      document.querySelector("#store-select").value = storeId;
+      const url = new URL(location.href);
+      url.searchParams.set("store", storeId);
+      history.replaceState(null, "", url);
+      return fetch(`/api/stores/${encodeURIComponent(storeId)}`)
+        .then(response => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return response.json();
+        })
+        .then(payload => {
+          data = payload;
+          renderStore(data.store);
+          renderModelTabs(data.models);
+          if (currentModel) renderModel(currentModel);
+          else document.querySelector("#content").innerHTML = `<div class="card error">该店铺还没有可展示的模型结果</div>`;
+        });
+    }
+
+    document.querySelector("#store-select").addEventListener("change", event => {
+      loadStore(event.target.value).catch(showError);
+    });
+
+    function showError(error) {
+      document.querySelector("#content").innerHTML = `<div class="card error">读取失败：${esc(error.message)}</div>`;
+    }
+
+    fetch("/api/stores")
+      .then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then(index => {
+        storeIndex = index;
+        document.querySelector("#store-select").innerHTML = index.stores.map(store => `
+          <option value="${esc(store.id)}">${esc(store.label)} · ${esc(store.country)} · ${esc(store.owner)}</option>
+        `).join("");
+        document.querySelector("#store-count").textContent = `共 ${index.stores.length} 家`;
+        const requested = new URLSearchParams(location.search).get("store");
+        const initial = index.stores.some(store => store.id === requested) ? requested : index.default_store_id;
+        return loadStore(initial);
+      })
+      .catch(showError);
+  </script>
+</body>
+</html>
