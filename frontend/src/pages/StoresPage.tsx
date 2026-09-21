@@ -4,7 +4,7 @@ import { api, type BusinessMetrics, type StoreSummary } from "../api";
 
 interface Picked { file: File; url: string }
 const COUNTRY_NAMES: Record<string, string> = { PH: "菲律宾", TH: "泰国", VN: "越南", MY: "马来西亚" };
-const EMPTY_METRICS = { ado: "", adg: "", currency: "", period_start: "", period_end: "" };
+const EMPTY_METRICS = { ado: "", adg: "", currency: "" };
 const MAX_FILES = 20;
 
 export default function StoresPage() {
@@ -73,15 +73,11 @@ export default function StoresPage() {
       ado: metrics.ado === "" ? null : Number(metrics.ado),
       adg: metrics.adg === "" ? null : Number(metrics.adg),
       currency: metrics.currency || null,
-      period_start: metrics.period_start || null,
-      period_end: metrics.period_end || null,
+      period_start: null,
+      period_end: null,
     };
     if ([business.ado, business.adg].some((v) => v !== null && (!Number.isFinite(v) || v < 0))) {
       setError("ADO 和 ADG 请填写大于或等于零的数字。"); return;
-    }
-    if (Boolean(business.period_start) !== Boolean(business.period_end) ||
-        (business.period_start && business.period_end && business.period_end < business.period_start)) {
-      setError("请填写完整且顺序正确的统计日期。"); return;
     }
     submitting.current = true;
     setBusy(true);
@@ -123,13 +119,11 @@ export default function StoresPage() {
           {picked.length > 0 && <div className="thumbs">{picked.map((item, index) => <div className="thumb" key={item.url}><img src={item.url} alt={item.file.name} /><span>{item.file.name}</span><button type="button" aria-label={`移除 ${item.file.name}`} onClick={() => remove(index)}>×</button></div>)}</div>}
           <p className="muted">已选 {picked.length} 张 · 单张不超过 {(maxBytes / 1024 / 1024).toFixed(0)} MB</p>
           <details className="business-inputs"><summary>补充经营数据 <span className="muted">选填</span></summary>
-            <p className="muted">ADO、ADG 沿用你们的业务报表口径。没有这些数据也可分析；不要把商品销量填成全店订单量。</p>
+            <p className="muted">ADO、ADG 是你们的全店日均订单与日均成交额，按你们业务报表的口径填，不用填统计周期。没有这些数据也可分析；不要把商品销量填成全店订单量。</p>
             <div className="business-fields">
               <div className="field"><label htmlFor="ado">ADO</label><input id="ado" type="number" min="0" step="any" value={metrics.ado} onChange={metric("ado")} placeholder="未提供" /></div>
               <div className="field"><label htmlFor="adg">ADG</label><input id="adg" type="number" min="0" step="any" value={metrics.adg} onChange={metric("adg")} placeholder="未提供" /></div>
               <div className="field"><label htmlFor="currency">ADG 币种</label><select id="currency" value={metrics.currency} onChange={metric("currency")}><option value="">未提供</option>{["PHP", "THB", "VND", "MYR", "CNY", "USD", "BRL"].map((code) => <option key={code}>{code}</option>)}</select></div>
-              <div className="field"><label htmlFor="period-start">统计开始日期</label><input id="period-start" type="date" value={metrics.period_start} onChange={metric("period_start")} /></div>
-              <div className="field"><label htmlFor="period-end">统计结束日期</label><input id="period-end" type="date" value={metrics.period_end} onChange={metric("period_end")} /></div>
             </div>
           </details>
         </fieldset>

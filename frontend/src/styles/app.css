@@ -86,24 +86,6 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
 
 /* ---------- pipeline progress ---------- */
 
-.stage-list { display: grid; gap: 8px; }
-.stage {
-  display: grid; grid-template-columns: 26px 1fr auto; gap: 12px; align-items: center;
-  padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcfe;
-}
-.stage .dot {
-  width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
-  color: white; background: #c3ccd8; font-size: 12px; font-weight: 800;
-}
-.stage[data-status="running"] .dot { background: var(--amber); }
-.stage[data-status="ready"] .dot { background: var(--teal); }
-.stage[data-status="failed"] .dot { background: #b0392f; }
-.stage strong { color: var(--navy); }
-.stage small { display: block; color: var(--muted); }
-.stage .state { color: var(--muted); font-size: 12px; font-weight: 700; }
-.stage[data-status="ready"] .state { color: var(--teal); }
-.stage[data-status="failed"] .state { color: #b0392f; }
-
 .spinner {
   width: 15px; height: 15px; border: 2px solid rgba(255, 255, 255, .45);
   border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite;

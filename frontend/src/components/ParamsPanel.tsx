@@ -18,9 +18,12 @@ interface Props {
   storeId: string; params: Params; onSaved: (params: Params) => void;
   onRun: (stages: string[], params: Params) => Promise<boolean>;
   busy: boolean; canRerunLocally: boolean;
+  /** Before the operator confirms the store, the knobs can still be saved —
+   *  they are read from disk when the run starts, so saving first works. */
+  confirmed: boolean;
 }
 
-export default function ParamsPanel({ params, onSaved, onRun, busy, canRerunLocally }: Props) {
+export default function ParamsPanel({ storeId, params, onSaved, onRun, busy, canRerunLocally, confirmed }: Props) {
   const [fields, setFields] = useState<ParamField[]>([]);
   const [draft, setDraft] = useState<Params>(params);
   const [note, setNote] = useState("");
@@ -41,19 +44,24 @@ export default function ParamsPanel({ params, onSaved, onRun, busy, canRerunLoca
       (field.maximum != null && Number(draft[field.name]) > field.maximum) ||
       (field.step === 1 && !Number.isInteger(draft[field.name]))));
     if (invalid) { setNote(`请检查“${TITLES[invalid.name]}”的取值范围。`); return; }
-    const full = ["clues", "scenes", "products", "synthesis", "expand", "retrieval", "rerank"];
-    const needsAnalysis = changed.some((f) => ["scene_count", "products_per_scene", "expansion_terms", "temperature"].includes(f.name));
-    const needsRetrieval = changed.some((f) => ["recall_limit", "stock_filter"].includes(f.name));
-    const stages = needsAnalysis || !canRerunLocally ? full : needsRetrieval ? ["retrieval", "rerank"] : ["rerank"];
     setApplying(true); setNote("");
     try {
+      if (!confirmed) {
+        onSaved(await api.setParams(storeId, draft));
+        setNote("设置已保存，确认店铺信息后按这套设置开始分析。");
+        return;
+      }
+      const full = ["clues", "scenes", "products", "synthesis", "expand", "retrieval", "rerank"];
+      const needsAnalysis = changed.some((f) => ["scene_count", "products_per_scene", "expansion_terms", "temperature"].includes(f.name));
+      const needsRetrieval = changed.some((f) => ["recall_limit", "stock_filter"].includes(f.name));
+      const stages = needsAnalysis || !canRerunLocally ? full : needsRetrieval ? ["retrieval", "rerank"] : ["rerank"];
       if (await onRun(stages, draft)) { onSaved(draft); setNote("设置已应用，正在更新受影响的结果。"); }
       else setNote("更新未启动，修改尚未应用。请检查页面提示。");
-    } catch { setNote("更新未启动，请稍后重试。"); }
+    } catch { setNote("未能保存设置，请稍后重试。"); }
     finally { setApplying(false); }
   }
   return (
-    <details className="card advanced-settings">
+    <details className="card advanced-settings" open={!confirmed}>
       <summary>高级设置 <span className="muted">通常无需调整</span></summary>
       <p className="muted">保留现有检索默认值。修改后，由系统更新相关步骤。</p>
       <div className="business-fields">{fields.map((field) => {
@@ -64,7 +72,7 @@ export default function ParamsPanel({ params, onSaved, onRun, busy, canRerunLoca
           <small className="muted">{HINTS[field.name] || (field.options ? "" : `${field.minimum}–${field.maximum}`)}</small>
         </label>;
       })}</div>
-      <div className="form-actions"><button className="btn small" disabled={busy || applying || !changed.length} onClick={apply}>应用并更新</button><button className="btn ghost small" disabled={busy || applying || !changed.length} onClick={() => { setDraft(params); setNote(""); }}>撤销修改</button><span role="status" className="muted">{note}</span></div>
+      <div className="form-actions"><button className="btn small" disabled={busy || applying || !changed.length} onClick={apply}>{confirmed ? "应用并更新" : "保存设置"}</button><button className="btn ghost small" disabled={busy || applying || !changed.length} onClick={() => { setDraft(params); setNote(""); }}>撤销修改</button><span role="status" className="muted">{note}</span></div>
     </details>
   );
 }
