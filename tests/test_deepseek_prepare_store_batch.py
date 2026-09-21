@@ -8,9 +8,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "deepseek_prepare_store_batch.py"
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from deepseek_prepare_store_batch import (
+from store_scenario_inspiration.pipeline.recognize import (
     build_sample,
     recognize,
     split_clue_names,

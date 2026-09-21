@@ -9,6 +9,8 @@ dependencies = [
   "openpyxl>=3.1,<4",
   "pydantic-settings>=2.6,<3",
   "python-multipart>=0.0.12",
+  "torch>=2.14.0",
+  "transformers>=5.17.0",
   "uvicorn>=0.32,<1",
 ]
 
@@ -21,12 +23,22 @@ dev = [
     "pytest>=8.3,<9",
 ]
 
+# The query encoder has to be the exact model the catalogue vectors were built
+# with, and PyPI's default torch wheel drags in a CUDA runtime we never use.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
 [build-system]
 requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# "." makes `scripts.x` importable as a namespace package; "scripts" supports
-# the bare `import x` style some tests use. Both styles exist today.
-pythonpath = [".", "src", "scripts"]
+# "." makes `scripts.x` importable as a namespace package for the tests that
+# drive a script module directly; the package itself comes from "src".
+pythonpath = [".", "src"]

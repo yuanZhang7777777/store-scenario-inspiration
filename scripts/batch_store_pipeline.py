@@ -4,9 +4,9 @@ Directory contract (paths are relative to the manifest directory):
 
   manifest.json
   stores/<store-id>/sample_store.json
-  stores/<store-id>/direction.json          (local, always regenerated)
-  stores/<store-id>/analysis_input.json     (local, direction-filtered)
-  stores/<store-id>/direction_overrides.json (optional operator corrections)
+  stores/<store-id>/clues.json              (local, always regenerated)
+  stores/<store-id>/analysis_input.json     (local, exclusions applied)
+  stores/<store-id>/exclusions.json         (optional operator corrections)
   stores/<store-id>/<model>_analysis.json
   stores/<store-id>/<model>_expansions.json
   stores/<store-id>/retrieval/<model>_retrieval.json
@@ -30,9 +30,9 @@ import sys
 
 SCRIPTS = Path(__file__).resolve().parent
 SAFE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
-NO_DIRECTION_HINT = (
-    "还没有商品被确认属于本店方向，场景会照常生成，但都只是「可以试试」的建议。"
-    "想收窄方向就在 direction_overrides.json 里勾选，或在界面上改。"
+NO_EXCLUSIONS_HINT = (
+    "这家店还没有人工排除任何商品，识别出来的每一条都会进入场景生成。"
+    "如果截图里有不属于本店方向的东西，在 exclusions.json 里排除掉，或在界面上取消勾选。"
 )
 ANALYSIS_FIELDS = {
     "model", "manager_summary", "store_profile", "audiences",
@@ -112,7 +112,8 @@ def artifact_paths(root: Path, store_id: str, model: str) -> dict[str, Path]:
     base = root / "stores" / store_id
     return {
         "store": base / "sample_store.json",
-        "direction": base / "direction.json",
+        "clues": base / "clues.json",
+        "exclusions": base / "exclusions.json",
         "analysis_input": base / "analysis_input.json",
         "analysis": base / f"{model}_analysis.json",
         "expansions": base / f"{model}_expansions.json",
@@ -163,26 +164,26 @@ def main() -> None:
             country = str(entry.get("country") or store["store"]["country"]).strip()
             status = {"store": store_id, "model": model, "country": country, "stages": {}}
 
-            direction_command = local_command("direction.py", paths["store"].parent)
-            status["direction_command"] = command_text(direction_command)
+            clues_command = local_command("clues.py", paths["store"].parent)
+            status["clues_command"] = command_text(clues_command)
             if not args.validate_only:
-                run(direction_command, enabled=True)
-            status["stages"]["direction"] = "ready" if paths["direction"].exists() else "failed"
+                run(clues_command, enabled=True)
+            status["stages"]["clues"] = "ready" if paths["clues"].exists() else "failed"
 
             if paths["analysis"].exists():
                 validate_analysis(paths["analysis"])
                 status["stages"]["analysis"] = "ready"
             elif paths["analysis_input"].exists():
                 status["stages"]["analysis"] = "waiting_model"
-                if not read_json(paths["analysis_input"]).get("direction_confirmed"):
-                    status["direction_hint"] = NO_DIRECTION_HINT
+                if not paths["exclusions"].exists():
+                    status["exclusions_hint"] = NO_EXCLUSIONS_HINT
                 if model == "deepseek":
                     status["analysis_command"] = command_text(local_command(
                         "deepseek_store_analysis.py", "--input", paths["analysis_input"],
                         "--output", paths["analysis"],
                     ))
             else:
-                status["stages"]["analysis"] = "blocked_by_direction"
+                status["stages"]["analysis"] = "blocked_by_clues"
 
             if paths["expansions"].exists():
                 validate_expansions(paths["expansions"])

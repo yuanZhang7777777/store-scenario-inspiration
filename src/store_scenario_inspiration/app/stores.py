@@ -8,11 +8,11 @@ is self-describing: whatever stages have run are simply the artifacts present.
 from __future__ import annotations
 
 import hashlib
-import json
 from pathlib import Path
 import re
 
-from direction import write_json
+from ..pipeline import artifacts
+from ..pipeline.artifacts import write_json
 
 
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -79,12 +79,23 @@ class Workspace:
         return found
 
     def stages(self, store_id: str) -> dict:
+        """Which artifacts exist. Order matches the pipeline, not the alphabet.
+
+        Rerank's verdicts live inside the retrieval payload, so its marker file
+        is removed whenever the recall is recomputed: verdicts about a list that
+        no longer exists are worse than none.
+        """
         base = self.dir(store_id)
         return {
             "uploaded": (base / "store.json").is_file(),
             "recognized": (base / "sample_store.json").is_file(),
-            "direction": (base / "direction.json").is_file(),
-            "scenes": (base / "deepseek_analysis.json").is_file(),
+            "clues": (base / "clues.json").is_file(),
+            "scenes": (base / "deepseek_scenes.json").is_file(),
+            "products": (base / "products").is_dir(),
+            "synthesis": (base / "deepseek_analysis.json").is_file(),
+            "expansions": (base / "expansions.json").is_file(),
+            "retrieval": (base / "retrieval.json").is_file(),
+            "rerank": (base / "rerank.json").is_file(),
         }
 
     def _new_id(self, store_name: str) -> str:
@@ -122,7 +133,7 @@ def safe_filename(filename: str, taken: set[str]) -> str:
 
 
 def read_json(path: Path) -> dict:
-    value = json.loads(Path(path).read_text(encoding="utf-8"))
+    value = artifacts.read_json(path)
     if not isinstance(value, dict):
         raise ValueError(f"JSON object required: {path}")
     return value

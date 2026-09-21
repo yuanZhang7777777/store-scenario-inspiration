@@ -10,33 +10,61 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 import io
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
-from direction import (
-    BUCKET_EXCLUDED,
-    BUCKET_ORDER,
+from ..pipeline.clues import (
+    excluded_clues,
     find_purity_violations,
-    load_overrides,
-    save_overrides,
-    selected_clues,
+    kept_clues,
+    load_exclusions,
+    save_exclusions,
 )
 
 from .config import Settings
-from .jobs import JobManager, run_direction
-from .scenes import rank_scenes
+from .export import (
+    deduped_rows,
+    notes_for,
+    report_rows,
+    roles_exported,
+    summaries,
+    workbook,
+)
+from .jobs import STAGE_ORDER, JobManager, run_clues
+from .params import SearchParams, load_params, save_params
+from .scenes import annotate
 from .stores import Workspace, read_json
 
 
-class Override(BaseModel):
-    clue: str
-    bucket: str
+class Exclusions(BaseModel):
+    """The whole exclusion list, not a diff: the operator sends what they see."""
+
+    excluded: list[str] = Field(default_factory=list)
 
 
-class Overrides(BaseModel):
-    overrides: list[Override] = Field(default_factory=list)
+class RunRequest(BaseModel):
+    """Which stages to run and with which knobs. Omitted means everything, as before."""
+
+    stages: list[str] | None = None
+    params: SearchParams | None = None
+
+
+class Pick(BaseModel):
+    """One row the operator ticked, as the three names that identify it."""
+
+    scene_name: str
+    product_cn: str
+    main_sku: str
+
+
+class AdoptionPicks(BaseModel):
+    """What to write out, and whether to collapse each SKU onto one line."""
+
+    picks: list[Pick] = Field(default_factory=list)
+    dedupe: bool = False
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -100,36 +128,60 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(404, "no such screenshot")
         return FileResponse(path)
 
-    @app.get("/api/stores/{store_id}/direction")
-    def get_direction(store_id: str) -> dict:
-        review = _require(workspace, store_id, "direction.json")
-        review["overrides"] = load_overrides(workspace.path(store_id, "direction_overrides.json"))
+    @app.get("/api/stores/{store_id}/clues")
+    def get_clues(store_id: str) -> dict:
+        """Every recognised product, with the operator's exclusions applied.
+
+        Recognition tags nearly everything as a product card at the same
+        confidence, so there is no threshold worth showing. The only lever is
+        what the operator excludes by hand, and that is all this returns.
+        """
+        review = _require(workspace, store_id, "clues.json")
+        path = workspace.path(store_id, "exclusions.json")
+        review["excluded"] = sorted(load_exclusions(path))
+        review["exclusions_saved"] = path.is_file()
         return review
 
-    @app.put("/api/stores/{store_id}/direction")
-    def put_direction(store_id: str, body: Overrides) -> dict:
-        """Record the operator's corrections, then rebuild the filtered input.
+    @app.put("/api/stores/{store_id}/clues")
+    def put_clues(store_id: str, body: Exclusions) -> dict:
+        """Record the operator's exclusions, then rebuild the filtered input.
 
         Rebuilding is local and free, so the next scene generation sees the
         correction without a second DeepSeek call.
         """
-        review = _require(workspace, store_id, "direction.json")
+        review = _require(workspace, store_id, "clues.json")
         known = {entry["clue"] for entry in review["entries"]}
-        unknown = sorted({item.clue for item in body.overrides} - known)
+        unknown = sorted(set(body.excluded) - known)
         if unknown:
-            raise HTTPException(400, "override targets unknown clue: " + "、".join(unknown))
-        for override in body.overrides:
-            if override.bucket not in BUCKET_ORDER:
-                raise HTTPException(400, f"invalid bucket: {override.bucket!r}")
-        save_overrides(workspace.path(store_id, "direction_overrides.json"),
-                       {item.clue: item.bucket for item in body.overrides})
-        run_direction(workspace, settings, store_id)
-        return get_direction(store_id)
+            raise HTTPException(400, "排除了一个不存在的商品：" + "、".join(unknown))
+        save_exclusions(workspace.path(store_id, "exclusions.json"), body.excluded)
+        run_clues(workspace, settings, store_id, load_params(workspace.path(store_id, "params.json")))
+        return get_clues(store_id)
+
+    @app.get("/api/params/schema")
+    def params_schema() -> dict:
+        """The knob list the settings form renders, with its Chinese explanations."""
+        return SearchParams.schema_for_ui()
+
+    @app.get("/api/stores/{store_id}/params")
+    def get_params(store_id: str) -> dict:
+        workspace.dir(store_id)
+        return load_params(workspace.path(store_id, "params.json")).model_dump()
+
+    @app.put("/api/stores/{store_id}/params")
+    def put_params(store_id: str, body: SearchParams) -> dict:
+        workspace.dir(store_id)
+        save_params(workspace.path(store_id, "params.json"), body)
+        return body.model_dump()
 
     @app.post("/api/stores/{store_id}/jobs")
-    def start_job(store_id: str) -> dict:
+    def start_job(store_id: str, body: RunRequest | None = None) -> dict:
+        requested = tuple(body.stages) if body and body.stages else ()
+        unknown = sorted(set(requested) - set(STAGE_ORDER))
+        if unknown:
+            raise HTTPException(400, "unknown stage: " + "、".join(unknown))
         try:
-            return jobs.start(store_id)
+            return jobs.start(store_id, requested or None, body.params if body else None)
         except ValueError as error:
             raise HTTPException(404, str(error)) from error
 
@@ -147,18 +199,59 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except KeyError as error:
             raise HTTPException(404, "no such job") from error
 
-    @app.get("/api/stores/{store_id}/scenes")
-    def get_scenes(store_id: str) -> dict:
+    @app.get("/api/stores/{store_id}/analysis")
+    def get_analysis(store_id: str) -> dict:
+        """The whole store reading, in the order a manager reads it."""
         analysis = _require(workspace, store_id, "deepseek_analysis.json")
         sample = _require(workspace, store_id, "sample_store.json")
-        clues = sample.get("observed_product_clues") or []
+        excluded = sorted(load_exclusions(workspace.path(store_id, "exclusions.json")))
         return {
             "store": sample.get("store") or {},
-            "scenes": rank_scenes(analysis, clues),
             "manager_summary": analysis.get("manager_summary") or {},
+            "store_profile": analysis.get("store_profile") or {},
             "audiences": analysis.get("audiences") or [],
-            "reintroduced": _reintroduced(workspace, store_id, analysis),
+            "current_product_structure": analysis.get("current_product_structure") or {},
+            "scenes": annotate(analysis, excluded),
+            "future_product_structure": analysis.get("future_product_structure") or {},
+            "operation_strategy": analysis.get("operation_strategy") or [],
+            "reintroduced": find_purity_violations(analysis, excluded),
         }
+
+    @app.get("/api/stores/{store_id}/retrieval")
+    def get_retrieval(store_id: str) -> dict:
+        """Scene → product → ranked catalogue SKUs, in the order the operator reads it."""
+        return _require(workspace, store_id, "retrieval.json")
+
+    @app.post("/api/stores/{store_id}/adoption/export")
+    def export_adoption(store_id: str, body: AdoptionPicks) -> Response:
+        """The ticked rows as a spreadsheet, joined against what the run recorded.
+
+        The picks come back over the wire, so they are used as a filter and
+        nothing else: names, ranks and stock all come off disk.
+
+        The same SKU picked under several roles is one product, and the operator
+        decides which list they want: the report repeats it once per role, the
+        buy-list keeps it once and says where it was used.
+        """
+        retrieval = _require(workspace, store_id, "retrieval.json")
+        analysis = _require(workspace, store_id, "deepseek_analysis.json")
+        entry = workspace.entry(store_id)
+        picks = [pick.model_dump() for pick in body.picks]
+        rows = report_rows(analysis, retrieval, picks)
+        notes = notes_for(
+            retrieval=retrieval,
+            params=load_params(workspace.path(store_id, "params.json")).model_dump(),
+            store=entry, store_id=store_id,
+            stock_path=settings.stock, exported=roles_exported(rows),
+        )
+        name = f"{entry.get('store_name') or store_id}-店铺场景报告.xlsx"
+        return Response(
+            content=workbook(rows, summaries(analysis, entry, retrieval.get("country") or ""),
+                             notes,
+                             deduped_rows(analysis, retrieval, picks) if body.dedupe else None),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"},
+        )
 
     return app
 
@@ -166,31 +259,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 def _require(workspace: Workspace, store_id: str, name: str) -> dict:
     path = workspace.path(store_id, name)
     if not path.is_file():
-        raise HTTPException(409, f"该阶段还没跑：{name}")
+        raise HTTPException(409, f"这个阶段还没跑：{name}")
     return read_json(path)
-
-
-def _reintroduced(workspace: Workspace, store_id: str, analysis: dict) -> list[dict]:
-    """Products the model wrote back in that the operator had ruled out."""
-    overrides = load_overrides(workspace.path(store_id, "direction_overrides.json"))
-    return find_purity_violations(
-        analysis, [clue for clue, bucket in overrides.items() if bucket == BUCKET_EXCLUDED]
-    )
 
 
 def _store_payload(workspace: Workspace, jobs: JobManager, store_id: str) -> dict:
     entry = workspace.entry(store_id)
+    clues_path = workspace.path(store_id, "clues.json")
     return {
         "id": store_id,
         "store": entry,
         "stages": workspace.stages(store_id),
-        "kept_clues": _kept_clues(workspace, store_id),
+        "params": load_params(workspace.path(store_id, "params.json")).model_dump(),
+        "kept_clues": kept_clues(read_json(clues_path)) if clues_path.is_file() else [],
+        "excluded_clues": excluded_clues(read_json(clues_path)) if clues_path.is_file() else [],
         "job": jobs.newest(store_id),
     }
-
-
-def _kept_clues(workspace: Workspace, store_id: str) -> list[str]:
-    path = workspace.path(store_id, "direction.json")
-    if not path.is_file():
-        return []
-    return selected_clues(read_json(path))

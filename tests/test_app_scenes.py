@@ -3,16 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from store_scenario_inspiration.app.scenes import (
-    BAND_BACKED,
-    BAND_STRETCH,
-    BAND_UNSURE,
-    rank_scenes,
-)
-
-
-def clue(name: str, role: str, confidence: float = 0.9) -> dict:
-    return {"clue": name, "role": role, "confidence": confidence, "evidence": "依据"}
+from store_scenario_inspiration.app.scenes import annotate
 
 
 def scene(name: str, products: list[str]) -> dict:
@@ -23,58 +14,40 @@ def scene(name: str, products: list[str]) -> dict:
             ]}
 
 
-SHELF = [
-    clue("遮阳棚替换布", "商品卡片主图"),
-    clue("便携 BBQ 烤架", "商品卡片主图"),
-    clue("风扇", "商品卡片主图"),
-]
+def test_a_scene_nobody_excluded_gets_an_empty_marker() -> None:
+    scenes = annotate({"scenes": [scene("庭院遮阳", ["遮阳棚替换布", "风扇"])]}, [])
+
+    assert scenes[0]["excluded"] == []
+    assert len(scenes[0]["product_needs"]) == 2
 
 
-def test_scene_resting_on_shelf_products_is_backed() -> None:
-    ranked = rank_scenes({"scenes": [scene("庭院遮阳", ["遮阳棚替换布", "风扇"])]}, SHELF)
+def test_the_operators_exclusion_is_attached_to_the_scene_that_carries_it() -> None:
+    """A product missing from the screenshots says nothing about whether we can
+    offer it. The only product-level signal worth carrying into the report is
+    the operator's own exclusion, because a scene that quietly re-adds a
+    ruled-out product is ignoring an instruction rather than observing."""
+    scenes = annotate(
+        {"scenes": [scene("庭院遮阳", ["遮阳棚替换布", "风扇"])]},
+        ["风扇"],
+    )
 
-    assert ranked[0]["fit"]["band"] == BAND_BACKED
-    assert ranked[0]["fit"]["backed"] == ["遮阳棚替换布", "风扇"]
-    assert ranked[0]["fit"]["unsupported"] == []
-
-
-def test_scene_the_model_invented_is_marked_as_a_stretch() -> None:
-    ranked = rank_scenes({"scenes": [scene("亲子露营", ["儿童帐篷", "野餐垫"])]}, SHELF)
-
-    assert ranked[0]["fit"]["band"] == BAND_STRETCH
-    assert ranked[0]["fit"]["backed_count"] == 0
-    assert ranked[0]["fit"]["unsupported"] == ["儿童帐篷", "野餐垫"]
+    assert scenes[0]["excluded"] == ["风扇"]
 
 
-def test_shaky_recognition_is_flagged_over_being_backed() -> None:
-    clues = [clue("遮阳棚替换布", "商品卡片主图", confidence=0.3),
-             clue("风扇", "商品卡片主图", confidence=0.3)]
-    ranked = rank_scenes({"scenes": [scene("庭院遮阳", ["遮阳棚替换布", "风扇"])]}, clues)
+def test_a_compounded_name_still_matches_the_excluded_clue() -> None:
+    scenes = annotate({"scenes": [scene("家庭安防", ["监控存储卡"])]}, ["Micro SD/CCTV 存储卡"])
 
-    assert ranked[0]["fit"]["band"] == BAND_UNSURE
+    assert scenes[0]["excluded"] == ["监控存储卡"]
 
 
-def test_a_scene_shown_only_as_scenery_does_not_count_as_backed() -> None:
-    clues = [clue("遮阳棚替换布", "场景中偶然出现"), clue("风扇", "商品卡片主图")]
-    ranked = rank_scenes({"scenes": [scene("庭院遮阳", ["遮阳棚替换布", "风扇"])]}, clues)
-
-    assert ranked[0]["fit"]["band"] == BAND_STRETCH
-    assert ranked[0]["fit"]["backed"] == ["风扇"]
-    assert ranked[0]["fit"]["weak"] == ["遮阳棚替换布"]
+def test_scenes_the_model_left_out_are_untouched() -> None:
+    assert annotate({}, ["风扇"]) == []
+    assert annotate({"scenes": None}, ["风扇"]) == []
 
 
-def test_best_supported_scenes_come_first() -> None:
-    ranked = rank_scenes({"scenes": [
-        scene("亲子露营", ["儿童帐篷", "野餐垫"]),
-        scene("庭院遮阳", ["遮阳棚替换布", "风扇"]),
-        scene("户外烧烤", ["便携 BBQ 烤架", "遮阳棚替换布"]),
-    ]}, SHELF)
+def test_annotation_keeps_every_other_scene_field() -> None:
+    scenes = annotate({"scenes": [scene("庭院遮阳", ["风扇"])]}, ["风扇"])
 
-    assert [item["scene_name"] for item in ranked] == ["庭院遮阳", "户外烧烤", "亲子露营"]
-
-
-def test_scene_without_any_shelf_product_is_not_pretended_to_be_backed() -> None:
-    ranked = rank_scenes({"scenes": [scene("空场景", [])]}, SHELF)
-
-    assert ranked[0]["fit"]["band"] == BAND_STRETCH
-    assert ranked[0]["fit"]["product_count"] == 0
+    assert scenes[0]["scene_name"] == "庭院遮阳"
+    assert scenes[0]["user_need"] == "需要"
+    assert scenes[0]["product_needs"][0]["purpose"] == "用途"

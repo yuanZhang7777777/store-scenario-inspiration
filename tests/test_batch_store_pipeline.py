@@ -57,7 +57,7 @@ def test_batch_resumes_at_api_free_assembly(tmp_path) -> None:
     assert json.loads((base / "gpt55_final.json").read_text(encoding="utf-8"))["recommended_main_skus"] == []
 
 
-def test_pipeline_applies_the_direction_gate_before_analysis(tmp_path) -> None:
+def test_pipeline_applies_the_exclusion_list_before_analysis(tmp_path) -> None:
     base = tmp_path / "stores" / "row-1"
     write(tmp_path / "manifest.json", {"models": ["deepseek"], "stores": [{"id": "row-1"}]})
     write(base / "sample_store.json", {
@@ -65,10 +65,12 @@ def test_pipeline_applies_the_direction_gate_before_analysis(tmp_path) -> None:
         "observed_product_clues": [
             {**observation("遮阳棚替换布", "商品卡片主图"),
              "occurrences": [occurrence("a.png", "商品卡片主图")]},
-            {**observation("Micro SD/CCTV 存储卡", "场景中偶然出现"),
-             "occurrences": [occurrence("a.png", "场景中偶然出现")]},
+            {**observation("Micro SD/CCTV 存储卡", "商品卡片主图"),
+             "occurrences": [occurrence("a.png", "商品卡片主图")]},
         ],
     })
+    write(base / "exclusions.json",
+          {"schema": "store-exclusions-v1", "excluded": ["Micro SD/CCTV 存储卡"]})
 
     result = subprocess.run(
         [sys.executable, str(SCRIPT), str(tmp_path / "manifest.json")],
@@ -76,17 +78,16 @@ def test_pipeline_applies_the_direction_gate_before_analysis(tmp_path) -> None:
     )
     run = json.loads(result.stdout)["runs"][0]
 
-    assert run["stages"]["direction"] == "ready"
+    assert run["stages"]["clues"] == "ready"
     assert run["stages"]["analysis"] == "waiting_model"
-    assert "direction_hint" not in run
+    assert "exclusions_hint" not in run
     assert "analysis_input.json" in run["analysis_command"]
     payload = json.loads((base / "analysis_input.json").read_text(encoding="utf-8"))
-    assert payload["direction_confirmed"] is True
     assert [item["clue"] for item in payload["observed_product_clues"]] == ["遮阳棚替换布"]
     assert [item["clue"] for item in payload["excluded_product_clues"]] == ["Micro SD/CCTV 存储卡"]
 
 
-def test_pipeline_still_runs_when_no_direction_is_confirmed(tmp_path) -> None:
+def test_pipeline_still_runs_when_nothing_has_been_excluded(tmp_path) -> None:
     """A store nobody has sorted must not stall. It gets a hint, not a block."""
     base = tmp_path / "stores" / "row-1"
     write(tmp_path / "manifest.json", {"models": ["deepseek"], "stores": [{"id": "row-1"}]})
@@ -105,9 +106,9 @@ def test_pipeline_still_runs_when_no_direction_is_confirmed(tmp_path) -> None:
     run = json.loads(result.stdout)["runs"][0]
 
     assert run["stages"]["analysis"] == "waiting_model"
-    assert "可以试试" in run["direction_hint"]
+    assert "人工排除" in run["exclusions_hint"]
     payload = json.loads((base / "analysis_input.json").read_text(encoding="utf-8"))
-    assert payload["direction_confirmed"] is False
+    assert payload["excluded_product_clues"] == []
     assert [item["clue"] for item in payload["observed_product_clues"]] == ["焊机、电钻等电动工具"]
 
 
