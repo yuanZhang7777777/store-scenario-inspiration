@@ -7,3 +7,5 @@ __pycache__/
 .venv/
 node_modules/
 frontend/dist/
+.reliability-fixes/
+frontend/vite.demo.config.ts

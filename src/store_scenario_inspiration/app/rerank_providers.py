@@ -28,6 +28,8 @@ from typing import Iterable
 import urllib.error
 import urllib.request
 
+from store_scenario_inspiration.reliability import atomic_json, probability
+
 TYPESAFE_URL = "https://api.typesafe.ai/v1/systemone"
 TYPESAFE_MODEL = "jev-latest"
 
@@ -169,25 +171,25 @@ def _read_typesafe_answers(answers: dict, skus: list[str]) -> Verdicts:
     back unanswered and stays where similarity put it.
     """
     verdicts = unknown(skus)
+    if not isinstance(answers, dict):
+        return verdicts
     for sku in skus:
-        answer = answers.get(sku) or {}
-        if answer.get("type") != "choice":
+        answer = answers.get(sku)
+        if not isinstance(answer, dict) or answer.get('type') != 'choice':
             continue
-        verdict = str(answer.get("choice") or "").strip().lower()
-        if verdict not in CRITERIA:
+        verdict = answer.get('choice')
+        if not isinstance(verdict, str) or verdict.strip().lower() not in CRITERIA:
             continue
-        probability = (answer.get("probabilities") or {}).get(verdict)
-        verdicts[sku] = {
-            "verdict": verdict,
-            "probability": float(probability) if isinstance(probability, (int, float)) else None,
-        }
+        verdict = verdict.strip().lower()
+        probabilities = answer.get('probabilities')
+        score = probabilities.get(verdict) if isinstance(probabilities, dict) else None
+        verdicts[sku] = {'verdict': verdict, 'probability': probability(score)}
     return verdicts
 
 
-def ask_typesafe(
-    scene_name: str, roles: list[dict], *, api_key: str,
-    url: str = TYPESAFE_URL, cache_dir: Path | None = None, timeout: int = 180,
-) -> tuple[Verdicts, dict]:
+def ask_typesafe(scene_name: str, roles: list[dict], *, api_key: str,
+                 url: str = TYPESAFE_URL, cache_dir: Path | None = None,
+                 timeout: int = 180) -> tuple[Verdicts, dict]:
     """One evaluation request covering every product one scene recalled.
 
     Jev answers each product as a structured choice with its own probabilities,
@@ -206,77 +208,78 @@ def ask_typesafe(
     between dropping and marking — does not pay for the same question twice. What
     is stored is what Jev answered, not the reading of it, so how the answer is
     read stays outside the cache.
+
+    An answer Jev left questions out of is never reused from the cache: it is
+    read back as incomplete and asked again, because a stored partial answer
+    would otherwise stand in for the real one on every later run.
     """
     products = scene_products(roles)
-    questions = {
-        product["main_sku"]: {
-            "type": "choice",
-            "instructions": _english_name(product, "standard_name_cn", "standard_name_en"),
-            "criteria": CRITERIA,
-        }
-        for product in products
-    }
     payload = {
-        "model": TYPESAFE_MODEL,
-        "state": _scene_state(scene_name, roles),
-        "questions": questions,
+        'model': TYPESAFE_MODEL, 'state': _scene_state(scene_name, roles),
+        'questions': {product['main_sku']: {'type': 'choice',
+                     'instructions': _english_name(product, 'standard_name_cn', 'standard_name_en'),
+                     'criteria': CRITERIA} for product in products},
     }
-    skus = [product["main_sku"] for product in products]
+    skus = [product['main_sku'] for product in products]
     cached = _cache_path(cache_dir, payload)
     if cached is not None and cached.is_file():
-        stored = json.loads(cached.read_text(encoding="utf-8"))
-        # The spend is reported as nothing, because nothing was spent: the bill
-        # for these tokens belongs to the run that first asked the question.
-        return _read_typesafe_answers(stored["answers"], skus), {}
-
-    body = _post(url, payload, api_key, timeout=timeout, label="TypeSafe")
-    answers = body.get("answers") or {}
-    usage = body.get("usage") or {}
+        try:
+            stored = json.loads(cached.read_text(encoding='utf-8'))
+            if not isinstance(stored.get('answers'), dict):
+                raise ValueError('invalid cached answers')
+            parsed = _read_typesafe_answers(stored['answers'], skus)
+            if any(row['verdict'] is None for row in parsed.values()):
+                raise ValueError('incomplete cached answers')
+            return parsed, {}
+        except (ValueError, TypeError, AttributeError, KeyError, OSError):
+            pass
+    body = _post(url, payload, api_key, timeout=timeout, label='TypeSafe')
+    if not isinstance(body, dict) or not isinstance(body.get('answers'), dict):
+        raise RuntimeError('相关性复核未返回有效答案，候选保持未确认。')
+    answers = body['answers']
+    usage = body.get('usage') if isinstance(body.get('usage'), dict) else {}
+    parsed = _read_typesafe_answers(answers, skus)
+    missing = sum(row['verdict'] is None for row in parsed.values())
+    if missing:
+        usage = {**usage, '_failed_slices': 1,
+                 '_warnings': [f'{missing} 件商品未获得有效复核答案，已保留为未确认。']}
     if cached is not None:
-        cached.parent.mkdir(parents=True, exist_ok=True)
-        cached.write_text(
-            json.dumps({"answers": answers, "usage": usage}, ensure_ascii=False),
-            encoding="utf-8",
-        )
-    return _read_typesafe_answers(answers, skus), usage
+        try:
+            atomic_json(cached, {'answers': answers, 'usage': usage})
+        except OSError:
+            usage = {**usage, '_warnings': ['本次复核已完成，但缓存未能保存。']}
+    return parsed, usage
 
 
 def read_deepseek_verdicts(content: str, skus: list[str]) -> Verdicts:
-    """Parse one scene's answer, keeping only verdicts about SKUs that were asked.
+    """Only a valid explicit unrelated array can imply related for unlisted SKUs.
 
-    The model is told to name the unrelated ones and stay quiet about the rest,
-    so silence here means ``related`` — unlike Jev, which answers every question
-    explicitly and whose silence really is "not answered". Starting from
-    ``related`` is what makes the two providers say the same thing about the same
-    SKU.
+    Silence about a SKU means related — read as "unanswered" it would report most
+    of a store as never judged — but silence about the *field* is not silence
+    about the SKUs: a reply with no ``unrelated`` array at all is an unreadable
+    answer, not a scene where everything belongs.
     """
     try:
         body = json.loads(content)
     except (ValueError, TypeError) as error:
-        raise RuntimeError(f"DeepSeek 返回的不是 JSON：{error}") from error
-    if not isinstance(body, dict):
-        raise RuntimeError("DeepSeek 返回的不是一个对象")
-
-    verdicts = {sku: {"verdict": RELATED, "probability": None} for sku in skus}
-    allowed = set(verdicts)
-    for row in body.get("unrelated") or []:
-        if not isinstance(row, dict):
-            continue
-        sku = row.get("main_sku")
-        if sku not in allowed:
-            continue
-        confidence = row.get("confidence")
-        verdicts[sku] = {
-            "verdict": UNRELATED,
-            "probability": float(confidence) if isinstance(confidence, (int, float)) else None,
-        }
+        raise RuntimeError(f'相关性复核返回的不是 JSON：{error}') from error
+    if not isinstance(body, dict) or not isinstance(body.get('unrelated'), list):
+        raise RuntimeError('相关性复核缺少有效的 unrelated 数组，结果未确认。')
+    allowed, seen = set(skus), set()
+    verdicts = {sku: {'verdict': RELATED, 'probability': None} for sku in skus}
+    for row in body['unrelated']:
+        if (not isinstance(row, dict) or not isinstance(row.get('main_sku'), str)
+                or row['main_sku'] not in allowed or row['main_sku'] in seen):
+            raise RuntimeError('相关性复核含异常、重复或未请求的 SKU，结果未确认。')
+        sku = row['main_sku']
+        seen.add(sku)
+        verdicts[sku] = {'verdict': UNRELATED, 'probability': probability(row.get('confidence'))}
     return verdicts
 
 
-def ask_deepseek(
-    scene_name: str, roles: list[dict], *, api_key: str,
-    url: str = DEEPSEEK_URL, cache_dir: Path | None = None, timeout: int = 300,
-) -> tuple[Verdicts, dict]:
+def ask_deepseek(scene_name: str, roles: list[dict], *, api_key: str,
+                 url: str = DEEPSEEK_URL, cache_dir: Path | None = None,
+                 timeout: int = 300) -> tuple[Verdicts, dict]:
     """One chat call per scene, cached by the exact bytes it was asked.
 
     DeepSeek writes the unrelated ones out in full, so its ceiling is the size of
@@ -289,37 +292,64 @@ def ask_deepseek(
     The cache is what makes tuning the cutoff free: re-deciding which verdicts to
     act on must not cost a second round of calls — and how the answer is read is
     part of that decision, so it stays outside the cache.
+
+    A slice that comes back unreadable, truncated or malformed leaves its SKUs
+    unanswered and the operator's candidates where they were; the other slices
+    keep their answers, because one bad reply is not a reason to throw away the
+    ones that were paid for and came back whole.
     """
     products = scene_products(roles)
     state = _scene_state(scene_name, roles)
-    verdicts = unknown(product["main_sku"] for product in products)
-    usage: dict = {}
+    verdicts = unknown(product['main_sku'] for product in products)
+    usage, failed, notices = {}, 0, []
     for start in range(0, len(products), DEEPSEEK_SLICE):
         slice_ = products[start:start + DEEPSEEK_SLICE]
+        skus = [product['main_sku'] for product in slice_]
         payload = _deepseek_payload(state, slice_)
         cached = _cache_path(cache_dir, payload)
+        parsed = None
         if cached is not None and cached.is_file():
-            content = json.loads(cached.read_text(encoding="utf-8"))["content"]
-        else:
-            body = _post(url, payload, api_key, timeout=timeout, label="DeepSeek")
             try:
-                content = body["choices"][0]["message"]["content"]
-            except (KeyError, IndexError, TypeError) as error:
-                raise RuntimeError(f"DeepSeek 返回的结构不对：{error}") from error
-            for key, value in (body.get("usage") or {}).items():
-                if isinstance(value, int) and isinstance(usage.get(key), int):
-                    usage[key] += value
-                else:
-                    usage[key] = value
+                stored = json.loads(cached.read_text(encoding='utf-8'))
+                parsed = read_deepseek_verdicts(stored['content'], skus)
+            except (RuntimeError, ValueError, TypeError, KeyError, OSError):
+                # Invalid cache does not certify relevance and is never retried
+                # forever. One fresh request may replace it with a valid response.
+                pass
+        if parsed is None:
+            try:
+                body = _post(url, payload, api_key, timeout=timeout, label='DeepSeek')
+                if not isinstance(body, dict):
+                    raise RuntimeError('相关性复核返回的结构不是对象。')
+                response_usage = body.get('usage') or {}
+                if isinstance(response_usage, dict):
+                    for key, value in response_usage.items():
+                        if isinstance(value, int) and not isinstance(value, bool):
+                            usage[key] = usage.get(key, 0) + value
+                choices = body.get('choices')
+                if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+                    raise RuntimeError('相关性复核缺少有效答案。')
+                choice = choices[0]
+                if not isinstance(choice.get('message'), dict):
+                    raise RuntimeError('相关性复核缺少有效消息。')
+                if choice.get('finish_reason') not in (None, 'stop'):
+                    raise RuntimeError('相关性复核没有完整结束。')
+                content = choice['message']['content']
+                parsed = read_deepseek_verdicts(content, skus)
+            except (RuntimeError, ValueError, TypeError, KeyError, IndexError, OSError) as exc:
+                failed += 1
+                notices.append(f'第 {start // DEEPSEEK_SLICE + 1} 批未完成复核（{type(exc).__name__}），已保留候选。')
+                continue
             if cached is not None:
-                cached.parent.mkdir(parents=True, exist_ok=True)
-                cached.write_text(
-                    json.dumps({"content": content, "usage": body.get("usage") or {}},
-                               ensure_ascii=False),
-                    encoding="utf-8",
-                )
-        verdicts.update(read_deepseek_verdicts(
-            content, [product["main_sku"] for product in slice_]))
+                try:
+                    atomic_json(cached, {'content': content, 'usage': response_usage})
+                except OSError:
+                    notices.append('本次复核已完成，但缓存未能保存。')
+        verdicts.update(parsed)
+    if failed:
+        usage['_failed_slices'] = failed
+    if notices:
+        usage['_warnings'] = notices
     return verdicts, usage
 
 

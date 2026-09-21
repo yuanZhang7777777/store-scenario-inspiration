@@ -34,6 +34,9 @@ from store_scenario_inspiration.catalog.pilot import (
 
 from .params import STOCK_IN_ONLY, SearchParams
 
+from zipfile import BadZipFile
+from store_scenario_inspiration.reliability import file_signature, stock_snapshot, DataChangedError
+
 
 SCHEMA_RETRIEVAL = "store-retrieval-v1"
 
@@ -90,8 +93,9 @@ def _rankings(queries: dict[str, list[str]], fts, index, encoder) -> list[tuple]
 
 
 @contextmanager
-def _keyword_index(asset_db: Path) -> Iterator[sqlite3.Connection]:
-    connection = build_fts(load_products(str(asset_db)))
+def _keyword_index(asset_db: Path, catalogue: dict | None = None) -> Iterator[sqlite3.Connection]:
+    # Build keywords from the same in-memory catalogue used for fusion.
+    connection = build_fts(catalogue if catalogue is not None else load_products(str(asset_db)))
     try:
         yield connection
     finally:
@@ -130,46 +134,53 @@ def _annotate(fused: list[dict], stock: dict[str, float] | None) -> None:
         candidate["country_available"] = None if stock is None else quantity > 0
 
 
-def retrieve_store(
-    *,
-    asset_db: Path,
-    vector_cache: Path,
-    model_cache: Path,
-    stock_path: Path,
-    country: str,
-    products: list[dict],
-    params: SearchParams,
-) -> dict:
-    """Rank catalogue SKUs for every product role in the store's scenes."""
+def retrieve_store(*, asset_db: Path, vector_cache: Path, model_cache: Path,
+                   stock_path: Path, country: str, products: list[dict], params: SearchParams) -> dict:
+    """Preserve the four-channel policy, adding source consistency and explicit fallback."""
+    if not products:
+        raise ValueError('没有可匹配的商品需求，请先完成场景商品分析。')
+    asset_revision, vector_revision = file_signature(asset_db), file_signature(vector_cache)
     catalogue = load_products(str(asset_db))
     index = load_vector_index(str(vector_cache))
     encoder = load_encoder(str(model_cache))
-    country_code, coverage, stock = _inventory(stock_path, country, catalogue)
-
+    stock_revision = file_signature(stock_path)
+    warnings, snapshot = [], None
+    try:
+        snapshot = stock_snapshot(stock_path)
+        country_code, coverage, stock = _inventory(stock_path, country, catalogue)
+    except DataChangedError:
+        raise
+    except (OSError, ValueError, KeyError, TypeError, BadZipFile) as exc:
+        country_code, coverage, stock = country.strip().upper(), 'unavailable', None
+        warnings.append('库存未能核验，候选保留为待确认；错误类型：' + type(exc).__name__)
+    if file_signature(stock_path) != stock_revision:
+        raise DataChangedError('库存读取过程中发生更新，请在更新完成后重试。')
+    if stock is None and params.stock_filter == STOCK_IN_ONLY:
+        raise RuntimeError('当前无法核验目标国家库存，未将未知库存商品当作有货推荐。请更新库存后重试。')
     scenes = []
-    with _keyword_index(asset_db) as fts:
+    with _keyword_index(asset_db, catalogue) as fts:
         for product in products:
             queries = _queries(product)
+            if not any(queries.values()):
+                raise ValueError('商品检索词为空，本次未发布不完整结果。')
             fused = fuse_rankings(catalogue, _rankings(queries, fts, index, encoder), GLOBAL_LIMIT)
             _annotate(fused, stock)
+            before_stock = len(fused)
             if stock is not None and params.stock_filter == STOCK_IN_ONLY:
-                fused = [candidate for candidate in fused if candidate["country_available"]]
-            kept = fused[: params.recall_limit]
-            # Ranks are renumbered over what is actually shown, so the list the
-            # operator reads never starts at 15 or skips numbers.
+                fused = [candidate for candidate in fused if candidate['country_available']]
+            kept = fused[:params.recall_limit]
             for rank, candidate in enumerate(kept, start=1):
-                candidate["rank"] = rank
-                candidate.pop("evidence", None)
-            scenes.append({
-                "scene_name": product.get("scene_name"),
-                "product_cn": product.get("product_cn"),
-                "product_en": product.get("product_en"),
-                "queries": queries,
-                "candidates": kept,
-            })
-    return {
-        "schema": SCHEMA_RETRIEVAL,
-        "country": country_code,
-        "inventory": coverage,
-        "scenes": scenes,
-    }
+                candidate['rank'] = rank
+                candidate.pop('evidence', None)
+            status = ('matched' if kept else 'no_stock_in_recalled_candidates' if before_stock
+                      else 'no_candidates_in_recall_window')
+            scenes.append({'scene_name': product.get('scene_name'), 'product_cn': product.get('product_cn'),
+                           'product_en': product.get('product_en'), 'queries': queries, 'candidates': kept,
+                           'match_status': status, 'candidate_count_before_stock': before_stock})
+    if (file_signature(asset_db) != asset_revision or file_signature(vector_cache) != vector_revision
+            or file_signature(stock_path) != stock_revision):
+        raise DataChangedError('分析期间商品或库存数据已更新，本次未发布混合版本结果，请重新匹配。')
+    return {'schema': SCHEMA_RETRIEVAL, 'country': country_code, 'inventory': coverage,
+            'inventory_snapshot': snapshot if stock is not None else None,
+            'source_revisions': {'catalogue': asset_revision, 'vectors': vector_revision},
+            'warnings': warnings, 'scenes': scenes}

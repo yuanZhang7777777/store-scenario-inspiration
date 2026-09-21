@@ -1,7 +1,12 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useParams } from "react-router-dom";
 
 import StorePage from "./pages/StorePage";
 import StoresPage from "./pages/StoresPage";
+
+function StoreRoute() {
+  const { storeId } = useParams();
+  return <StorePage key={storeId} />;
+}
 
 export default function App() {
   return (
@@ -10,13 +15,12 @@ export default function App() {
         <p className="eyebrow">Store Scenario Inspiration</p>
         <h1>店铺场景灵感助手</h1>
         <p className="subtitle">
-          上传店铺截图，系统识别商品、推演使用场景，再去产品库里为场景里的每个商品角色召回候选 SKU。
-          识别出来的商品默认全部保留，不属于这家店的取消勾选即可；候选按相关度排好，勾选你要采用的。
+          分析店铺、商品与经营方向，匹配公司产品库中的 SKU，形成可供上架选择的商品清单。
         </p>
       </div>
       <Routes>
         <Route path="/" element={<StoresPage />} />
-        <Route path="/stores/:storeId" element={<StorePage />} />
+        <Route path="/stores/:storeId" element={<StoreRoute />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>

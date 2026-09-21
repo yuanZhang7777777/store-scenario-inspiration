@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import io
+import json
 from pathlib import Path
 from urllib.parse import quote
 
@@ -24,6 +25,11 @@ from ..pipeline.clues import (
     save_exclusions,
 )
 
+from ..pipeline.business import normalize_metrics
+from .confirmation import (ANALYSIS_STAGES, ConfirmationRequired, approve_review,
+                           invalidate_review, review_details, review_status)
+from ..reliability import StoreLease
+from contextlib import closing
 from .config import Settings
 from .export import (
     deduped_rows,
@@ -37,6 +43,10 @@ from .jobs import STAGE_ORDER, JobManager, run_clues
 from .params import SearchParams, load_params, save_params
 from .scenes import annotate
 from .stores import Workspace, read_json
+
+
+class ReviewApproval(BaseModel):
+    version: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
 
 
 class Exclusions(BaseModel):
@@ -101,6 +111,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "data_dir": str(settings.data_dir),
             "countries": list(settings.countries),
             "api_key_configured": bool(settings.api_key),
+            "max_upload_bytes": settings.max_upload_bytes,
         }
 
     @app.post("/api/stores")
@@ -108,12 +119,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store_name: str = Form(...),
         country: str = Form(...),
         files: list[UploadFile] = File(...),
+        business_metrics: str = Form("{}"),
     ) -> dict:
         if country.strip().upper() not in settings.countries:
             raise HTTPException(400, f"unsupported country: {country!r}")
+        try:
+            metrics = normalize_metrics(json.loads(business_metrics))
+        except (ValueError, TypeError) as error:
+            raise HTTPException(400, str(error)) from error
+        if len(files) > 20:
+            raise HTTPException(413, "一次最多上传 20 张图片")
         uploads = []
+        total_bytes = 0
         for upload in files:
-            payload = await upload.read()
+            payload = await upload.read(settings.max_upload_bytes + 1)
+            total_bytes += len(payload)
+            if total_bytes > min(200 * 1024 * 1024, settings.max_upload_bytes * 20):
+                raise HTTPException(413, "本次上传图片总量过大，请减少图片后重试")
             if not payload:
                 raise HTTPException(400, f"empty upload: {upload.filename}")
             if len(payload) > settings.max_upload_bytes:
@@ -122,7 +144,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(400, f"not an image: {upload.filename}")
             uploads.append((upload.filename or "screenshot.png", io.BytesIO(payload)))
         try:
-            return workspace.create(store_name, country, uploads)
+            return workspace.create(store_name, country, uploads, business_metrics=metrics)
         except ValueError as error:
             raise HTTPException(400, str(error)) from error
 
@@ -140,6 +162,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not path.is_file():
             raise HTTPException(404, "no such screenshot")
         return FileResponse(path)
+
+    @app.get("/api/stores/{store_id}/review")
+    def get_review(store_id: str) -> dict:
+        workspace.entry(store_id)
+        return review_details(workspace.dir(store_id))
+
+    @app.post("/api/stores/{store_id}/review/confirm")
+    def confirm_review(store_id: str, body: ReviewApproval) -> dict:
+        workspace.entry(store_id)
+        try:
+            with closing(StoreLease(workspace.path(store_id, ".pipeline.lock"))):
+                approve_review(workspace.dir(store_id), body.version)
+            # start() reacquires the lease and revalidates the same facts.
+            return jobs.start(store_id, ANALYSIS_STAGES)
+        except (ValueError, RuntimeError) as error:
+            raise HTTPException(409, str(error)) from error
 
     @app.get("/api/stores/{store_id}/clues")
     def get_clues(store_id: str) -> dict:
@@ -167,8 +205,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         unknown = sorted(set(body.excluded) - known)
         if unknown:
             raise HTTPException(400, "排除了一个不存在的商品：" + "、".join(unknown))
-        save_exclusions(workspace.path(store_id, "exclusions.json"), body.excluded)
-        run_clues(workspace, settings, store_id, load_params(workspace.path(store_id, "params.json")))
+        try:
+            with closing(StoreLease(workspace.path(store_id, ".pipeline.lock"))):
+                previous = load_exclusions(workspace.path(store_id, "exclusions.json"))
+                if set(body.excluded) != previous:
+                    invalidate_review(workspace.dir(store_id))
+                save_exclusions(workspace.path(store_id, "exclusions.json"), body.excluded)
+                run_clues(workspace, settings, store_id, load_params(workspace.path(store_id, "params.json")))
+        except (ValueError, RuntimeError) as error:
+            raise HTTPException(409, str(error)) from error
         return get_clues(store_id)
 
     @app.get("/api/params/schema")
@@ -195,6 +240,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(400, "unknown stage: " + "、".join(unknown))
         try:
             return jobs.start(store_id, requested or None, body.params if body else None)
+        except ConfirmationRequired as error:
+            raise HTTPException(409, str(error)) from error
         except ValueError as error:
             raise HTTPException(404, str(error)) from error
 
@@ -220,6 +267,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         excluded = sorted(load_exclusions(workspace.path(store_id, "exclusions.json")))
         return {
             "store": sample.get("store") or {},
+            "business_context": sample.get("business_context") or None,
             "manager_summary": analysis.get("manager_summary") or {},
             "store_profile": analysis.get("store_profile") or {},
             "audiences": analysis.get("audiences") or [],
@@ -287,4 +335,5 @@ def _store_payload(workspace: Workspace, jobs: JobManager, store_id: str) -> dic
         "kept_clues": kept_clues(read_json(clues_path)) if clues_path.is_file() else [],
         "excluded_clues": excluded_clues(read_json(clues_path)) if clues_path.is_file() else [],
         "job": jobs.newest(store_id),
+        "confirmation": review_status(workspace.dir(store_id)),
     }

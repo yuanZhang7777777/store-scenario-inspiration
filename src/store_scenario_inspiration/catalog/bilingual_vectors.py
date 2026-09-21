@@ -20,6 +20,8 @@ import sqlite3
 
 import numpy as np
 
+from store_scenario_inspiration.reliability import revision_cached
+
 
 LANGUAGES = ("cn", "en")
 
@@ -77,6 +79,7 @@ class BilingualVectorIndex:
     def load(cls, cache_path: Path) -> BilingualVectorIndex:
         connection = sqlite3.connect(f"file:{cache_path}?mode=ro", uri=True)
         try:
+            connection.execute("BEGIN")
             model_ids = {}
             for language in LANGUAGES:
                 keys = [row[0] for row in connection.execute(
@@ -120,7 +123,7 @@ class BilingualVectorIndex:
         return [(self.skus[int(index)], float(scores[int(index)])) for index in top]
 
 
-@lru_cache(maxsize=1)
+@revision_cached
 def load_vector_index(cache_path: str) -> BilingualVectorIndex:
     return BilingualVectorIndex.load(Path(cache_path))
 
@@ -130,8 +133,7 @@ def load_encoder(hub_cache: str) -> BilingualEncoder:
     return BilingualEncoder(Path(hub_cache))
 
 
-@lru_cache(maxsize=1)
+@revision_cached
 def load_products(asset_db: str) -> dict[str, dict[str, object]]:
     from .pilot import load_products as read_products
-
     return read_products(Path(asset_db))

@@ -240,47 +240,39 @@ def _model_name(provider) -> str:
 
 def notes_for(*, retrieval: dict, params: dict, store: dict, store_id: str,
               stock_path: Path, exported: int) -> list[tuple[str, str]]:
-    """How this particular sheet was made, and what in it can move."""
-    rerank = retrieval.get("rerank") or {}
-    stock = Path(stock_path)
-    written = (
-        datetime.fromtimestamp(stock.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-        if stock.is_file() else "文件不存在"
-    )
-    read = retrieval.get("inventory") == "available"
+    """Describe the snapshot actually used, never the file present at export time."""
+    rerank = retrieval.get('rerank') or {}
+    snapshot = retrieval.get('inventory_snapshot') or {}
+    read = retrieval.get('inventory') == 'available'
+    written = snapshot.get('file_modified_at') or '历史结果未记录，请重新匹配后核验'
     notes = [
-        ("店铺", str(store.get("store_name") or "")),
-        ("店铺 ID", store_id),
-        ("目标国家", str(retrieval.get("country") or "")),
-        ("导出时间", datetime.now().strftime("%Y-%m-%d %H:%M")),
-        ("导出条数", f"{exported} 个产品"),
-        ("", ""),
-        ("本次运行的参数", ""),
+        ('店铺', str(store.get('store_name') or '')), ('店铺 ID', store_id),
+        ('目标国家', str(retrieval.get('country') or '')),
+        ('导出时间', datetime.now().strftime('%Y-%m-%d %H:%M')),
+        ('导出条数', f'{exported} 个产品'), ('', ''), ('本次运行的参数', ''),
     ]
     notes += [(label, str(params.get(name))) for name, label in PARAM_LABELS]
     notes += [
-        ("", ""),
-        ("库存口径", ""),
-        ("库存快照文件", stock.name),
-        ("库存快照时间", written),
-        ("这次读到了吗", "读到了" if read else "没读到，本次候选没有库存信息"),
-        ("", ""),
-        ("这次判断实际是怎么跑的", ""),
-        ("实际用的模式", _mode_label(rerank.get("mode"))),
-        ("实际用的模型", _model_name(rerank.get("provider"))),
-        ("实际用的把握阈值", str(rerank.get("cutoff") or "")),
-        ("问了/答了/剔除/失败", "{}/{}/{}/{}".format(
-            rerank.get("asked", 0), rerank.get("answered", 0),
-            rerank.get("dropped", 0), rerank.get("failed", 0))),
-        ("", ""),
-        ("这份表哪里会变", ""),
-        ("结论和商品这几列", "不会变。场景、包含产品、召回的主SKU、主SKU产品名称都是本次运行定下来的，"
-                            "任何时候打开都是同一份。"),
-        ("有货数量会变", "跟着库存快照走。它说的是那份快照当时的情况，不是现在；"
-                        "快照换了、再跑一次召回，这一列才会变。"),
-        ("库存是怎么进来的", "库存决定的是候选能不能被召回（看上面的「没货的要不要留着」那一档）。"
-                            "标「没货」是指这个 SKU 在目标国家当前没有可发量。"),
+        ('', ''), ('库存口径', ''),
+        ('库存快照文件', str(snapshot.get('filename') or '未记录')),
+        ('库存快照时间', str(written)),
+        ('库存时间说明', '以上为原文件修改时间（带时区），不是库存业务发生时间，也不是实时库存。'),
+        ('库存快照 SHA256', str(snapshot.get('sha256') or '未记录')),
+        ('库存读取时间', str(snapshot.get('captured_at') or '未记录')),
+        ('这次读到了吗', '读到了' if read else '未核验，本次候选不提供库存承诺'),
+        ('', ''), ('相关性复核', ''),
+        ('实际用的模式', _mode_label(rerank.get('mode'))),
+        ('实际用的模型', _model_name(rerank.get('provider'))),
+        ('实际用的把握阈值', str(rerank.get('cutoff') or '')),
+        ('问了/答了/剔除/失败', '{}/{}/{}/{}'.format(rerank.get('asked', 0), rerank.get('answered', 0),
+                                              rerank.get('dropped', 0), rerank.get('failed', 0))),
+        ('', ''), ('结果使用说明', ''),
+        ('结论和商品', '来自本次已保存结果，主SKU仍需按现有ERP流程选择具体子款。'),
+        ('库存数量', '仅对应本次结果绑定的库存快照。替换库存文件不会自动更新已经保存的结果。'),
+        ('候选为空', '仅说明本轮召回范围内未找到满足条件的候选，不代表整个商品库没有该商品。'),
     ]
+    if retrieval.get('warnings'):
+        notes.append(('待确认事项', '\n'.join(str(item) for item in retrieval['warnings'])))
     return notes
 
 

@@ -442,15 +442,17 @@ def test_an_unrelated_row_without_a_confidence_can_never_delete_anything() -> No
     assert verdicts["A"] == {"verdict": "unrelated", "probability": None}
 
 
-def test_a_sku_the_model_made_up_never_enters_the_verdicts() -> None:
+def test_a_sku_the_model_made_up_costs_its_whole_answer_its_credibility() -> None:
     """Invented SKUs are the one way a bad answer could delete a row that was
-    never on the list, so anything not asked about is dropped on the floor."""
-    verdicts = rerank_providers.read_deepseek_verdicts(
-        json.dumps({"unrelated": [{"main_sku": "NOPE", "confidence": 0.99}]}),
-        ["A"],
-    )
-
-    assert verdicts == {"A": {"verdict": "related", "probability": None}}
+    never on the list. The row survives because only asked-about SKUs are read,
+    and the answer is refused outright because a model naming SKUs it was not
+    given has stopped following the instructions that the rest of it relies on —
+    a refused answer keeps every candidate, which is the safe way to be wrong."""
+    with pytest.raises(RuntimeError, match="未请求的 SKU"):
+        rerank_providers.read_deepseek_verdicts(
+            json.dumps({"unrelated": [{"main_sku": "NOPE", "confidence": 0.99}]}),
+            ["A"],
+        )
 
 
 def test_an_answer_that_is_not_json_is_reported_in_the_operators_words() -> None:

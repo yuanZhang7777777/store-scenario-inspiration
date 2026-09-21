@@ -11,8 +11,11 @@ import hashlib
 from pathlib import Path
 import re
 
+from ..pipeline.business import normalize_metrics
 from ..pipeline import artifacts
 from ..pipeline.artifacts import write_json
+
+from store_scenario_inspiration.reliability import json_digest
 
 
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -42,7 +45,7 @@ class Workspace:
     def entry(self, store_id: str) -> dict:
         return read_json(self.path(store_id, "store.json"))
 
-    def create(self, store_name: str, country: str, uploads: list[tuple[str, object]]) -> dict:
+    def create(self, store_name: str, country: str, uploads: list[tuple[str, object]], *, business_metrics: dict | None = None) -> dict:
         """Write one store's screenshots and remember where they came from.
 
         Uploads arrive as ``(filename, file object)`` and are copied in chunks so
@@ -53,6 +56,7 @@ class Workspace:
         if not uploads:
             raise ValueError("at least one screenshot is required")
 
+        metrics = normalize_metrics(business_metrics)
         store_id = self._new_id(store_name)
         images = self.images_dir(store_id)
         images.mkdir(parents=True)
@@ -63,7 +67,7 @@ class Workspace:
             taken.add(name)
             kept.append(save_image(handle, images / name))
         entry = {"store_name": store_name.strip(), "country": country.strip().upper(),
-                 "images": kept}
+                 "images": kept, "business_metrics": metrics, **metrics}
         write_json(self.path(store_id, "store.json"), entry)
         return {"id": store_id, **entry}
 
@@ -84,18 +88,34 @@ class Workspace:
         Rerank's verdicts live inside the retrieval payload, so its marker file
         is removed whenever the recall is recomputed: verdicts about a list that
         no longer exists are worse than none.
+
+        The products stage is a directory rather than a file, and what makes it
+        count as done is the manifest agreeing with the scenes and the filtered
+        source it was built from — a half-written batch is not a finished stage.
         """
         base = self.dir(store_id)
+        products_ready = (base / 'products').is_dir()
+        manifest = base / 'products' / 'manifest.json'
+        if manifest.is_file():
+            try:
+                data = read_json(manifest)
+                expected = json_digest({'scenes': read_json(base / 'deepseek_scenes.json'),
+                                        'source': read_json(base / 'analysis_input.json')})
+                products_ready = data.get('status') == 'ready' and data.get('source_digest') == expected
+            except (ValueError, TypeError, KeyError, OSError):
+                products_ready = False
         return {
-            "uploaded": (base / "store.json").is_file(),
-            "recognized": (base / "sample_store.json").is_file(),
-            "clues": (base / "clues.json").is_file(),
-            "scenes": (base / "deepseek_scenes.json").is_file(),
-            "products": (base / "products").is_dir(),
-            "synthesis": (base / "deepseek_analysis.json").is_file(),
-            "expansions": (base / "expansions.json").is_file(),
-            "retrieval": (base / "retrieval.json").is_file(),
-            "rerank": (base / "rerank.json").is_file(),
+            'uploaded': (base / 'store.json').is_file(),
+            'recognized': (base / 'sample_store.json').is_file(),
+            'clues': (base / 'clues.json').is_file(),
+            'scenes': (base / 'deepseek_scenes.json').is_file(),
+            'products': products_ready,
+            # True here means an assembled result is readable, not that the optional
+            # prose stage succeeded. Partial results explicitly label their status.
+            'synthesis': (base / 'deepseek_analysis.json').is_file(),
+            'expansions': (base / 'expansions.json').is_file(),
+            'retrieval': (base / 'retrieval.json').is_file(),
+            'rerank': (base / 'rerank.json').is_file(),
         }
 
     def _new_id(self, store_name: str) -> str:

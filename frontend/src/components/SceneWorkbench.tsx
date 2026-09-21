@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { selectionKey, readSelection, normalizedSelections } from "../selection";
 
 import { api, type Candidate, type Pick, type Retrieval, type RetrievalProduct, type Scene } from "../api";
 
@@ -16,14 +17,13 @@ const CHANNEL: Record<string, string> = {
    label says so without a second tier to explain. */
 const VERDICT: Record<string, string> = { related: "相关", unrelated: "不相关" };
 const VERDICT_TITLE: Record<string, string> = {
-  related: "模型认为这个商品和这个场景搭，卖得掉",
-  unrelated: "模型认为这个商品和这个场景不搭。只是它的判断，不一定对——默认仍然留在列表里，"
-    + "用不用你说了算；只有把「不相关的产品要不要排除」调成排除，这类才会被去掉",
+  related: "模型认为该商品适用于此场景，不代表销售效果或上架条件已核验。",
+  unrelated: "模型认为该商品与场景不相关，可人工复核后选择。",
 };
 
 /** Separates the three parts of a selection without colliding with real names. */
 function selKey(scene: string, product: string, sku: string): string {
-  return `${scene}::${product}::${sku}`;
+  return selectionKey(scene, product, sku);
 }
 
 /**
@@ -38,7 +38,7 @@ function selKey(scene: string, product: string, sku: string): string {
  * as "TH 可发 6" must not print there as something else.
  */
 function stockLabel(candidate: Candidate, country: string): { text: string; yes: boolean } {
-  if (candidate.country_available == null) return { text: "未读到库存表", yes: false };
+  if (candidate.country_available == null) return { text: "库存未核验", yes: false };
   if (!candidate.country_available) return { text: `${country} 无货`, yes: false };
   const quantity = candidate.country_available_quantity;
   return typeof quantity === "number"
@@ -53,7 +53,9 @@ function storageKey(storeId: string): string {
 function loadSet(key: string): Set<string> {
   try {
     const raw = JSON.parse(localStorage.getItem(key) ?? "[]");
-    return new Set(Array.isArray(raw) ? raw.filter((v) => typeof v === "string") : []);
+    const values = normalizedSelections(raw);
+    try { if (!localStorage.getItem(key + ".backup-v1")) localStorage.setItem(key + ".backup-v1", JSON.stringify(raw)); } catch { /* Original remains available if persistence is blocked. */ }
+    return values;
   } catch {
     return new Set();
   }
@@ -95,8 +97,9 @@ function byRecall(candidate: Candidate): number {
 
 /** Undo `selKey`, so the ticked rows can be sent back as the names they are. */
 function parseSelKey(key: string): Pick {
-  const [scene_name, product_cn, main_sku] = key.split("::");
-  return { scene_name, product_cn, main_sku };
+  const value = readSelection(key);
+  if (!value) throw new Error("选择记录已失效，请重新勾选商品。");
+  return value;
 }
 
 interface Props {
@@ -121,7 +124,8 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
   }, [storeId]);
 
   useEffect(() => {
-    localStorage.setItem(storageKey(storeId), JSON.stringify([...picked]));
+    try { localStorage.setItem(storageKey(storeId), JSON.stringify([...picked])); }
+    catch { setNote("浏览器未能保存勾选记录，请在离开前导出清单。"); }
   }, [picked, storeId]);
 
   const byScene = useMemo(() => {
@@ -211,7 +215,7 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
           {stocked ? (
             <em
               className={`stock ${stock.yes ? "yes" : "no"}`}
-              title="目标国家当前可发的量，跟着库存快照走"
+              title="库存快照中的目标国家可发数量，并非实时库存"
             >
               {stock.text}
             </em>
@@ -220,7 +224,7 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
         {taken ? null : (
           <button
             className="above"
-            title="这一行及更相关的全部选中"
+            title="选择本行及上方候选"
             onClick={() => selectAbove(item, candidate.rank)}
           >
             以上全选
@@ -260,7 +264,7 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
 
   const stocked = retrieval?.inventory === "available";
   const country = retrieval?.country ?? "";
-  const inventoryNote = retrieval && !stocked ? "这次没有读到库存表，下面列出的是纯语义召回结果。" : null;
+  const inventoryNote = retrieval && !stocked ? "库存暂未核验。以下为商品匹配结果，请确认库存后再使用。" : null;
   const rerank = retrieval?.rerank;
   // Counted off the rows rather than read from the summary: the summary only
   // counts what was removed, and in the default mode nothing is removed — "剔除
@@ -291,16 +295,15 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
         {inventoryNote && <p className="notice warn">{inventoryNote}</p>}
         {rerank && rerank.notes.length === 0 && (
           <p className="muted">
-            模型逐个场景看了一遍：{rerank.asked} 件商品（同一个商品在几个商品角色下出现只算一次），
-            答上来 {rerank.answered} 件，其中 {doubted} 条标成不相关
+            相关性复核：{rerank.answered} 项已完成，其中 {doubted} 项需人工留意
             {rerank.dropped > 0 ? `，去掉 ${rerank.dropped} 条。` : "，都留在列表里。"}
           </p>
         )}
         {rerank && rerank.notes.length > 0 && (
           <p className="notice warn">
-            模型这一步没跑成，原因：{rerank.notes[0]}
+            部分商品未完成复核，候选已保留。详情：{rerank.notes[0]}
             {rerank.answered === 0 &&
-              " 这一步整体没有生效，下面的列表和「重跑召回」出来的完全一样，没有漏掉也没有多删。"}
+              " 未获得有效复核结果，保留原始候选供人工判断。"}
           </p>
         )}
 
@@ -341,7 +344,7 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
                         {excluded && <em className="tag">你已排除</em>}
                         <span className="role-count">
                           {!item
-                            ? "还没检索"
+                            ? "待匹配"
                             : taken.length > 0
                               ? `${count} 个候选，另 ${taken.length} 条已排除`
                               : `${count} 个候选`}
@@ -351,12 +354,12 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
 
                       {expanded && item && (
                         <div className="candidates">
-                          <p className="queries">
-                            <span className="lbl">检索词</span>
+                          <details className="queries"><summary>查看检索词</summary>
+                            <span className="lbl">匹配依据</span>
                             {[...item.queries.cn, ...item.queries.en].join("、")}
-                          </p>
+                          </details>
                           {count === 0 && taken.length === 0 ? (
-                            <p className="muted">这个商品在产品库里没搜到候选。</p>
+                            <p className="muted">本次匹配范围内未找到候选，不代表整个产品库没有对应商品。</p>
                           ) : (
                             <ul className="candidate-list">
                               {rows.map((candidate) => row(item, candidate, false))}
@@ -390,7 +393,7 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
 
       <section className="card adoption">
         <h2>
-          最终采纳 <span className="count">{adopted.length} 个 SKU</span>
+          已选商品 <span className="count">{adopted.length} 个 SKU</span>
         </h2>
         {adopted.length === 0 ? (
           <p className="muted">还没有选中任何 SKU。展开上面的商品，勾选你要采用的候选。</p>
@@ -403,19 +406,19 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
               <button className="btn ghost small" disabled={busy} onClick={exportSheet}>
                 {busy ? "正在导出…" : "导出 Excel"}
               </button>
-              <button className="btn ghost small" onClick={() => setPicked(new Set())}>
-                全部取消
+              <button className="btn ghost small" onClick={() => { if (window.confirm("清空已选商品？")) setPicked(new Set()); }}>
+                清空已选
               </button>
               <label
                 className="muted dedupe-toggle"
-                title="勾上之后，表格里会多一个「去重商品清单」：每个 SKU 一行，它被哪些场景用来干什么合并写在一起。"
+                title="新增一张每个 SKU 一行的去重清单，原场景报告保留。"
               >
                 <input
                   type="checkbox"
                   checked={dedupe}
                   onChange={(e) => setDedupe(e.target.checked)}
                 />
-                表格里同一 SKU 只列一次
+                附带去重 SKU 清单
               </label>
               {note && <span className="muted">{note}</span>}
             </div>

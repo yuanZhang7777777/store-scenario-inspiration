@@ -33,6 +33,8 @@ from typing import Callable
 from .params import RERANK_MARK_ONLY
 from .rerank_providers import RELATED, UNRELATED, Verdicts, scene_products
 
+from store_scenario_inspiration.reliability import probability
+
 
 SCHEMA_RERANK = "store-rerank-v1"
 
@@ -60,10 +62,10 @@ def _is_confidently_unrelated(verdict: dict | None, cutoff: float) -> bool:
     A missing probability counts as not confident: a model returning a verdict
     without one is not a reason to delete a row.
     """
-    if not verdict or verdict["verdict"] != UNRELATED:
+    if not isinstance(verdict, dict) or verdict.get('verdict') != UNRELATED:
         return False
-    probability = verdict["probability"]
-    return probability is not None and probability >= cutoff
+    score = probability(verdict.get('probability'))
+    return score is not None and score >= cutoff
 
 
 def apply_verdicts(
@@ -103,77 +105,98 @@ def strip_verdicts(payload: dict) -> int:
     The dropped candidates are all still in the payload — that is what the audit
     list is for — so turning the judgement off is putting them back where pure
     similarity had them and forgetting the labels. Returns how many came back.
+
+    Sorting unconditionally, rather than only when something was dropped, is what
+    makes this idempotent: a mark-only run never moved a row out of the payload,
+    but it did reorder one, and "off" has to mean the recall order either way.
     """
     restored = 0
-    for scene in payload.get("scenes") or []:
-        rows = (scene.get("candidates") or []) + (scene.get("dropped") or [])
-        if scene.get("dropped"):
-            rows.sort(key=lambda row: row.get("recall_rank") or row.get("rank") or 0)
-            restored += len(scene["dropped"])
+    for scene in payload.get('scenes') or []:
+        rows = (scene.get('candidates') or []) + (scene.get('dropped') or [])
+        rows.sort(key=lambda row: row.get('recall_rank') or row.get('rank') or 0)
+        restored += len(scene.get('dropped') or [])
         for rank, row in enumerate(rows, start=1):
-            row["rank"] = rank
-            row.pop("recall_rank", None)
-            row.pop("rerank", None)
-        scene["candidates"] = rows
-        scene.pop("dropped", None)
-    payload.pop("rerank", None)
+            row['rank'] = rank
+            row.pop('recall_rank', None)
+            row.pop('rerank', None)
+        scene['candidates'] = rows
+        scene.pop('dropped', None)
+    payload.pop('rerank', None)
     return restored
 
 
-def rerank_scenes(
-    roles: list[dict], *, ask: Ask, cutoff: float, drop: bool
-) -> tuple[list[dict], dict]:
+def rerank_scenes(roles: list[dict], *, ask: Ask, cutoff: float, drop: bool) -> tuple[list[dict], dict]:
     """One verdict pass per scene, in parallel over the network.
 
     The roles keep their own candidate lists and are handed back unchanged in
     shape — a SKU judged once for the scene carries that verdict into every role
     that recalled it, which is the whole point: it is one answer, shown wherever
     it applies.
-    """
-    summary = {"asked": 0, "answered": 0, "dropped": 0, "failed": 0, "notes": [], "usage": {}}
-    scenes: dict[str, list[dict]] = OrderedDict()
-    for role in roles:
-        scenes.setdefault(role["scene_name"], []).append(role)
 
-    def one(item: tuple[str, list[dict]]):
+    A scene the model refused is reported in the model's own words, because that
+    is the only version the operator can act on: "TypeSafe 403" is a key or an
+    outage, "复核未完成（RuntimeError）" is nothing they can do anything about.
+    """
+    summary = {'asked': 0, 'answered': 0, 'dropped': 0, 'failed': 0, 'notes': [], 'usage': {}}
+    scenes = OrderedDict()
+    for role in roles:
+        scenes.setdefault(role['scene_name'], []).append(role)
+
+    def one(item):
         scene_name, scene_roles = item
-        if not any(role.get("candidates") for role in scene_roles):
+        if not any(role.get('candidates') for role in scene_roles):
             return item, None, None, {}
         try:
             verdicts, usage = ask(scene_name, scene_roles)
-        except RuntimeError as error:
-            return item, None, str(error), {}
-        return item, verdicts, None, usage
+            if not isinstance(verdicts, dict) or not isinstance(usage, dict):
+                raise ValueError('invalid verdict response')
+            safe = {}
+            for candidate in scene_products(scene_roles):
+                sku = candidate['main_sku']
+                row = verdicts.get(sku)
+                label = row.get('verdict') if isinstance(row, dict) else None
+                safe[sku] = {'verdict': label if label in (RELATED, UNRELATED) else None,
+                             'probability': probability(row.get('probability')) if isinstance(row, dict) else None}
+        except (RuntimeError, ValueError, TypeError, KeyError, IndexError, OSError) as exc:
+            if isinstance(exc, RuntimeError) and str(exc).strip():
+                return item, None, str(exc), {}
+            return item, None, '复核未完成（' + type(exc).__name__ + '），候选已保留。', {}
+        return item, safe, None, usage
 
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         outcomes = list(pool.map(one, scenes.items()))
-
     for (scene_name, scene_roles), verdicts, error, usage in outcomes:
-        summary["asked"] += len(scene_products(scene_roles))
+        summary['asked'] += len(scene_products(scene_roles))
+        usage = dict(usage)
+        notices = usage.pop('_warnings', [])
+        failed_slices = usage.pop('_failed_slices', 0)
+        if isinstance(notices, list):
+            for note in notices:
+                if len(summary['notes']) < 3:
+                    summary['notes'].append(f'{scene_name}：{note}')
+        if failed_slices:
+            summary['failed'] += 1  # Keep the existing unit: failed scenes, not slices.
         for key, value in usage.items():
-            if isinstance(value, int) and isinstance(summary["usage"].get(key), int):
-                summary["usage"][key] += value
+            if isinstance(value, int) and isinstance(summary['usage'].get(key), int):
+                summary['usage'][key] += value
             else:
-                summary["usage"][key] = value
+                summary['usage'][key] = value
         if error is not None:
-            # One unanswered scene must not cost the other seven their verdicts,
-            # and it must never cost it its candidates either.
-            summary["failed"] += 1
-            if len(summary["notes"]) < 3:
-                summary["notes"].append(f"{scene_name}：{error}")
+            summary['failed'] += 1
+            if len(summary['notes']) < 3:
+                summary['notes'].append(f'{scene_name}：{error}')
+            # A caller may have supplied an already-judged payload. Unknown must
+            # not retain labels left by a preceding run.
+            for role in scene_roles:
+                strip_verdicts({'scenes': [role]})
             continue
         if verdicts is None:
             continue
-        summary["answered"] += sum(
-            1 for verdict in verdicts.values() if verdict["verdict"] is not None
-        )
+        summary['answered'] += sum(1 for row in verdicts.values() if row['verdict'] is not None)
         for role in scene_roles:
-            kept, dropped = apply_verdicts(
-                role["candidates"], verdicts, cutoff=cutoff, drop=drop
-            )
-            role["candidates"] = kept
-            role["dropped"] = dropped
-            summary["dropped"] += len(dropped)
+            kept, dropped = apply_verdicts(role['candidates'], verdicts, cutoff=cutoff, drop=drop)
+            role['candidates'], role['dropped'] = kept, dropped
+            summary['dropped'] += len(dropped)
     return roles, summary
 
 

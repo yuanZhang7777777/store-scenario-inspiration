@@ -1,3 +1,40 @@
+export interface ReviewStatus {
+  state: "not_ready" | "awaiting_confirmation" | "confirmed";
+  confirmed: boolean;
+  version: string | null;
+  confirmed_at?: string | null;
+}
+export interface ReviewDetails extends ReviewStatus { business_context: BusinessContext | null }
+
+export interface BusinessMetrics {
+  ado: number | null;
+  adg: number | null;
+  currency: string | null;
+  period_start: string | null;
+  period_end: string | null;
+}
+export interface SalesRow {
+  product_name: string;
+  product_title: string | null;
+  product_id: string | null;
+  source_image: string;
+  source_row: number;
+  raw_text: string;
+  period_text: string | null;
+  approximate: boolean;
+  orders: number | null;
+  units_sold: number | null;
+  gmv: number | null;
+  currency: string | null;
+}
+export interface BusinessContext {
+  schema: string;
+  store_metrics: BusinessMetrics;
+  sales_rows: SalesRow[];
+  warnings: string[];
+  scope: string;
+}
+
 export type StageStatus = "pending" | "running" | "ready" | "failed";
 export type JobStatus = "pending" | "running" | "ready" | "failed" | "cancelled";
 
@@ -89,6 +126,7 @@ export interface StoreSummary {
 }
 
 export interface StoreDetail {
+  confirmation?: ReviewStatus;
   id: string;
   store: { store_name: string; country: string; images: Screenshot[] };
   stages: StageProgress;
@@ -168,6 +206,7 @@ export interface Strategy {
 }
 
 export interface Analysis {
+  business_context?: BusinessContext | null;
   store: Record<string, string | null>;
   manager_summary: ManagerSummary;
   store_profile: Judgement;
@@ -292,16 +331,17 @@ async function save(path: string, body: unknown, fallback: string): Promise<void
 
 export const api = {
   health: () =>
-    call<{ data_dir: string; api_key_configured: boolean; countries: string[] }>("/health"),
+    call<{ data_dir: string; api_key_configured: boolean; countries: string[]; max_upload_bytes?: number }>("/health"),
 
   stores: () => call<{ stores: StoreSummary[] }>("/stores").then((r) => r.stores),
 
   store: (id: string) => call<StoreDetail>(`/stores/${id}`),
 
-  createStore: (storeName: string, country: string, files: File[]) => {
+  createStore: (storeName: string, country: string, files: File[], metrics?: BusinessMetrics) => {
     const body = new FormData();
     body.append("store_name", storeName);
     body.append("country", country);
+    if (metrics) body.append("business_metrics", JSON.stringify(metrics));
     files.forEach((file) => body.append("files", file));
     return call<StoreSummary>("/stores", { method: "POST", body });
   },
@@ -312,6 +352,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...(stages ? { stages } : {}), ...(params ? { params } : {}) }),
     }),
+
+  review: (id: string) => call<ReviewDetails>(`/stores/${id}/review`),
+
+  confirmReview: (id: string, version: string) => call<Job>(`/stores/${id}/review/confirm`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version }),
+  }),
 
   job: (jobId: string) => call<Job>(`/jobs/${jobId}`),
 

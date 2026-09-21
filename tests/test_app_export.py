@@ -335,31 +335,55 @@ def test_a_report_with_no_audiences_or_strategies_leaves_those_cells_empty() -> 
 
 # ---------- how the sheet says it was made ----------
 
-def test_the_notes_say_what_moves_and_where_the_stock_went(tmp_path) -> None:
+def snapshot(filename: str) -> dict:
+    return {"filename": filename, "sha256": "a" * 64, "captured_at": "2026-09-20 10:00",
+            "file_modified_at": "2026-09-19 09:30 (+08:00)"}
+
+
+def test_the_notes_name_the_snapshot_this_result_was_built_from(tmp_path) -> None:
     stock = tmp_path / "库存明细.xlsx"
     stock.write_bytes(b"x")
 
     notes = dict(notes_for(
-        retrieval=retrieval(), params={"scene_count": 6}, store={"store_name": "店"},
+        retrieval={**retrieval(), "inventory_snapshot": snapshot("库存明细.xlsx")},
+        params={"scene_count": 6}, store={"store_name": "店"},
         store_id="store-1", stock_path=stock, exported=3,
     ))
 
     assert notes["库存快照文件"] == "库存明细.xlsx"
+    assert notes["库存快照时间"] == "2026-09-19 09:30 (+08:00)"
+    assert notes["库存快照 SHA256"] == "a" * 64
     assert notes["导出条数"] == "3 个产品"
     assert notes["这次读到了吗"] == "读到了"
-    assert notes["结论和商品这几列"].startswith("不会变")
-    assert notes["有货数量会变"].startswith("跟着库存快照走")
-    assert "没货的要不要留着" in notes["库存是怎么进来的"]
+    assert notes["库存数量"].startswith("仅对应本次结果绑定的库存快照")
 
 
-def test_a_missing_stock_file_is_said_rather_than_guessed(tmp_path) -> None:
+def test_a_file_that_appeared_later_never_stands_in_for_the_one_that_was_read(tmp_path) -> None:
+    """The export is handed whatever stock file is configured *now*. That file is
+    not the evidence for these rows, so borrowing its timestamp would date the
+    result to a snapshot it was never built from."""
+    stock = tmp_path / "后来放进去的.xlsx"
+    stock.write_bytes(b"x")
+
     notes = dict(notes_for(
         retrieval={**retrieval(), "inventory": "unavailable"}, params={}, store={},
-        store_id="store-1", stock_path=tmp_path / "没有这个文件.xlsx", exported=0,
+        store_id="store-1", stock_path=stock, exported=0,
     ))
 
-    assert notes["库存快照时间"] == "文件不存在"
-    assert notes["这次读到了吗"].startswith("没读到")
+    assert notes["库存快照时间"] == "历史结果未记录，请重新匹配后核验"
+    assert notes["库存快照文件"] == "未记录"
+    assert notes["这次读到了吗"] == "未核验，本次候选不提供库存承诺"
+
+
+def test_the_snapshot_the_results_used_survives_the_file_being_gone(tmp_path) -> None:
+    notes = dict(notes_for(
+        retrieval={**retrieval(), "inventory_snapshot": snapshot("已删除的库存.xlsx")},
+        params={}, store={}, store_id="store-1",
+        stock_path=tmp_path / "没有这个文件.xlsx", exported=0,
+    ))
+
+    assert notes["库存快照文件"] == "已删除的库存.xlsx"
+    assert notes["库存快照时间"] == "2026-09-19 09:30 (+08:00)"
 
 
 # ---------- the download ----------

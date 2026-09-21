@@ -326,6 +326,10 @@ def test_expansions_still_cap_each_language_at_the_operators_count(monkeypatch) 
                       "expanded_cn": ["a", "b", "c", "d"], "expanded_en": ["a", "b", "c", "d"]}],
     }]}, ensure_ascii=False)))
 
-    result, _ = analyze_expansions({"scenes": []}, "secret-key", expansion_terms=2)
+    result, _ = analyze_expansions(
+        {"scenes": [{"scene_name": "露营",
+                     "products": [{"product_cn": "帐篷", "product_en": "Tent"}]}]},
+        "secret-key", expansion_terms=2,
+    )
 
     assert result["scenes"][0]["products"][0]["expanded_cn"] == ["a", "b"]

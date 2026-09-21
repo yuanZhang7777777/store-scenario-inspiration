@@ -159,12 +159,17 @@ def upload(client, store_name="Shopee-13021PH", country="PH", count=2):
                        files=files)
 
 
-def run_job(client, store_id: str, stages: list[str] | None = None,
-            params: dict | None = None) -> dict:
-    """Wait for the background job, which runs off the request thread."""
+def post_job(client, store_id: str, stages: list[str] | None = None,
+             params: dict | None = None) -> dict:
     body = {key: value for key, value in
             (("stages", stages), ("params", params)) if value is not None} or None
-    job_id = client.post(f"/api/stores/{store_id}/jobs", json=body).json()["id"]
+    response = client.post(f"/api/stores/{store_id}/jobs", json=body)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def settle(client, job_id: str) -> dict:
+    """Wait for the background job, which runs off the request thread."""
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
         job = client.get(f"/api/jobs/{job_id}").json()
@@ -172,6 +177,34 @@ def run_job(client, store_id: str, stages: list[str] | None = None,
             return job
         time.sleep(0.05)
     raise AssertionError(f"job {job_id} did not settle: {job}")
+
+
+def confirm(client, store_id: str) -> dict:
+    """Approve the facts as they were read, which is what starts the analysis."""
+    review = client.get(f"/api/stores/{store_id}/review")
+    assert review.status_code == 200, review.text
+    started = client.post(f"/api/stores/{store_id}/review/confirm",
+                          json={"version": review.json()["version"]})
+    assert started.status_code == 200, started.text
+    return settle(client, started.json()["id"])
+
+
+def run_job(client, store_id: str, stages: list[str] | None = None,
+            params: dict | None = None) -> dict:
+    """The whole run, in the two halves the page now performs.
+
+    With no stages this is what the operator gets: the upload only reads the
+    screenshots, and the analysis starts once they have confirmed what was read.
+    The two cannot share one request, because that would spend the money before
+    anyone agreed to it.
+    """
+    if stages is None:
+        # The knobs go with the first half, because that is where the page
+        # sends them: the operator sets them before confirming, and the
+        # analysis the confirmation starts reads what was saved.
+        settle(client, post_job(client, store_id, ["recognize", "clues"], params)["id"])
+        return confirm(client, store_id)
+    return settle(client, post_job(client, store_id, stages, params)["id"])
 
 
 def read_analysis_input(client, store_id: str) -> dict:
@@ -211,19 +244,27 @@ def test_duplicate_upload_names_stay_apart(client) -> None:
 def test_running_the_pipeline_produces_scenes_expansion_and_candidates(client) -> None:
     store_id = upload(client).json()["id"]
 
-    job = run_job(client, store_id)
+    # Two halves, because the operator gets to see what was read before paying
+    # for the analysis of it: recognition runs on the upload, and everything
+    # after it runs on the confirmation.
+    read = settle(client, post_job(client, store_id, ["recognize", "clues"])["id"])
+    assert [stage["name"] for stage in read["stages"]] == ["recognize", "clues"]
+    assert [stage["status"] for stage in read["stages"]] == ["ready", "ready"]
+    assert read["usage"]["total_tokens"] == 42
+
+    job = confirm(client, store_id)
 
     assert job["status"] == "ready"
     assert [stage["name"] for stage in job["stages"]] == [
-        "recognize", "clues", "scenes", "products", "synthesis", "expand", "retrieval", "rerank",
+        "scenes", "products", "synthesis", "expand", "retrieval", "rerank",
     ]
-    assert [stage["status"] for stage in job["stages"]] == ["ready"] * 8
+    assert [stage["status"] for stage in job["stages"]] == ["ready"] * 6
     # Every stage reports how long the operator waited for it.
     assert all(isinstance(stage["seconds"], float) for stage in job["stages"])
     assert job["seconds"] >= 0
     # Every paid stage's spend lands in one running total, including the one call
     # per scene in the products stage.
-    assert job["usage"]["total_tokens"] == 42 + 99 + 30 * 2 + 5 + 7
+    assert job["usage"]["total_tokens"] == 99 + 30 * 2 + 5 + 7
 
     source = read_analysis_input(client, store_id)
     assert [item["clue"] for item in source["observed_product_clues"]] == ["遮阳棚替换布", "风扇"]
@@ -240,12 +281,16 @@ def test_running_the_pipeline_produces_scenes_expansion_and_candidates(client) -
 def test_the_paid_stages_are_marked_so_the_operator_knows_what_costs_money(client) -> None:
     store_id = upload(client).json()["id"]
 
-    job = run_job(client, store_id)
+    read = settle(client, post_job(client, store_id, ["recognize", "clues"])["id"])
+    job = confirm(client, store_id)
 
+    # The reading half: the screenshots cost money, applying the exclusion list
+    # does not.
+    assert [stage["paid"] for stage in read["stages"]] == [True, False]
     # Judging the candidates is free on Jev, which is what a store starts on, and
     # charged by DeepSeek, so the tag follows whichever model the store is set to.
     assert [stage["paid"] for stage in job["stages"]] == [
-        True, False, True, True, True, True, False, False,
+        True, True, True, True, False, False,
     ]
 
     billed = run_job(client, store_id, stages=["rerank"],
@@ -253,13 +298,12 @@ def test_the_paid_stages_are_marked_so_the_operator_knows_what_costs_money(clien
     assert billed["stages"][-1]["paid"] is True
 
 
-def test_redoing_the_local_stages_never_pays_for_recognition_again(client, monkeypatch) -> None:
-    """Excluding a product and tuning the recall count answer the same question
-    twice: what does the catalogue have. Both are free, so the operator can
-    iterate as often as they like without a second DeepSeek bill."""
+def test_redoing_the_local_stage_never_pays_for_anything_again(client, monkeypatch) -> None:
+    """Tuning the recall count answers "what does the catalogue have", which is a
+    question the operator asks over and over while they tune it. Re-asking it
+    recounts the same recalled candidates and must not re-run one paid stage."""
     store_id = upload(client).json()["id"]
     run_job(client, store_id)
-    client.put(f"/api/stores/{store_id}/clues", json={"excluded": ["风扇"]})
 
     def refuse(*args, **kwargs):
         raise AssertionError("a paid stage ran again")
@@ -268,16 +312,35 @@ def test_redoing_the_local_stages_never_pays_for_recognition_again(client, monke
     monkeypatch.setattr(jobs_module, "analyze_scenes", refuse)
     monkeypatch.setattr(jobs_module, "analyze_scene_products", refuse)
     monkeypatch.setattr(jobs_module, "analyze_synthesis", refuse)
+    monkeypatch.setattr(jobs_module, "analyze_expansions", refuse)
 
-    job = run_job(client, store_id, stages=["clues", "retrieval"],
-                  params={"scene_count": 8, "products_per_scene": 10,
-                          "expansion_terms": 6, "recall_limit": 5})
+    job = run_job(client, store_id, stages=["retrieval"], params={"recall_limit": 5})
 
     assert job["status"] == "ready"
     assert job["usage"] == {}
+    assert client.get(f"/api/stores/{store_id}/retrieval").status_code == 200
+
+
+def test_excluding_a_product_asks_for_the_facts_to_be_confirmed_again(client) -> None:
+    """The exclusion list is one of the things the operator approved, so changing
+    it makes the approval stale and the analysis stops until they look again.
+    Nothing is deleted: the run they already paid for is still on disk."""
+    store_id = upload(client).json()["id"]
+    run_job(client, store_id)
+
+    client.put(f"/api/stores/{store_id}/clues", json={"excluded": ["风扇"]})
+
+    review = client.get(f"/api/stores/{store_id}/review").json()
+    assert review["confirmed"] is False
+    assert review["state"] == "awaiting_confirmation"
+    refused = client.post(f"/api/stores/{store_id}/jobs", json={"stages": ["scenes"]})
+    assert refused.status_code == 409
+    assert "确认" in refused.json()["detail"]
+    # The facts the operator is being asked about are the new ones.
     assert [item["clue"] for item in read_analysis_input(client, store_id)["observed_product_clues"]] == [
         "遮阳棚替换布"
     ]
+    # And the results of the previous run are still readable.
     assert client.get(f"/api/stores/{store_id}/retrieval").status_code == 200
 
 

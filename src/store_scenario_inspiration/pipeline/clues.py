@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 import re
 
+from .business import business_for_analysis
 from .artifacts import write_json
 
 
@@ -28,7 +29,7 @@ SCHEMA_EXCLUSIONS = "store-exclusions-v1"
 SCHEMA_ANALYSIS_INPUT = "store-analysis-input-v1"
 
 DIRECTION_NOTE = (
-    "observed_product_clues 是这家店截图里可见的商品，店铺方向由运营排除后确定。"
+    "observed_product_clues 是这家店截图里可见的商品，运营排除只是分析范围，不等于已验证主营或畅销方向。"
     "它们决定哪些场景值得做，但不是场景清单的上限。"
     "每个场景的 product_needs 要从场景本身出发写全，可以包含店里没有在卖的商品。"
     "excluded_product_clues 是运营明确排除的商品：不得作为 current_product_structure 的支柱，"
@@ -111,6 +112,7 @@ def build_analysis_input(sample: dict, review: dict, *, direction: str | None = 
             if entry["excluded"]
         ],
         "limitations": list(sample.get("limitations") or []),
+        "business_context": business_for_analysis(sample.get("business_context"), excluded_clues(review)),
     }
 
 
