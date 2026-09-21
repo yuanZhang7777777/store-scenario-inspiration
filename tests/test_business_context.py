@@ -77,6 +77,9 @@ def test_unknown_order_is_not_filled_from_units():
 def test_ambiguous_numeric_strings_are_not_guessed():
     rows, issues = business.read_sales_rows([row(gmv='3.000,50')], 'sales.png')
     assert rows[0]['gmv'] is None and issues
+    # The operator has to be able to tell a model slip from an unreadable card,
+    # so the warning quotes what was read instead of just saying it failed.
+    assert '3.000,50' in issues[0]
 
 
 def test_invalid_optional_metric_preserves_valid_metrics():

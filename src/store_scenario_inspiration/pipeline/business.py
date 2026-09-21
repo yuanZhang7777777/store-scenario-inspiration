@@ -107,7 +107,10 @@ def read_sales_rows(value: Any, filename: str) -> tuple[list[dict], list[str]]:
                     row[metric] = number(item.get(metric), integer=metric != "gmv")
                 except ValueError:
                     row[metric] = None
-                    warnings.append(prefix + f"：{metric} 无法核验，未用于判断")
+                    # Name what was read: a bare "无法核验" leaves the operator
+                    # unable to tell a model slip from an unreadable screenshot.
+                    read = str(item.get(metric))[:40]
+                    warnings.append(prefix + f"：{metric} 读到「{read}」，不是数字，未用于判断")
             if all(row[k] is None for k in ("orders", "units_sold", "gmv")):
                 continue
             rows.append(row)
@@ -167,6 +170,7 @@ VISION_SALES_RULES = r'''
 除 product_name 和 raw_text 外，无法确认的字段填 null；approximate 默认为 false。
 只有表头或卡片标签明确说明意义才填写对应数字。Sold/销量是件数，不当成订单数；价格不是成交额。
 不根据金额、列位置或相邻百分比猜字段。缺表头时不填含义未知的数字。
+销量行直接写出明确数字的（例如 ขายได้ 411 ชิ้น/เดือน、月销 411、511 sold），把 411 这类数字填进 units_sold，原文照抄进 raw_text。这是唯一该填数字的情况：数字写明了就填，写的是缩写或看不懂的单位就留 null。
 2mil+、6k+ 等保留原文，approximate=true；不能冒充精确值。不确定本地数字分隔符时对应数字填 null。
 不要从月销量估算日均订单，不把部分商品销量冒充全店 ADO，不估算利润或转化率。
 同种商品的不同卡片可以分别有销售记录；跨图片不累加，filename 必须对应输入图片。
