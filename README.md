@@ -4,13 +4,19 @@
 
 2026-09-18 已接通 DeepSeek Flash 批量链路：钉钉店铺字段与内嵌截图读取、截图商品识别、店铺与场景分析、正向中英文扩写、中文/英文向量与 FTS5 四路加权 RRF、DeepSeek 软重排、国家库存关联和 Excel 导出。当前交付为光旅 10 店与集团八部 PH/TH/VN/MY 10 店；GPT-5.5 结果只保留为历史对照。运行资产位于 `E:/Project/store-assortment-copilot/var/pilot`，完整业务规划见 [2026-09-18 生产化规划](E:/Project/store-assortment-copilot/docs/2026-09-18-store-analysis-rag-roadmap.md)。
 
-本地前端：
+本地前端（2026-09-21 起是 React 工作台：上传截图 → 确认排除名单 → 调参数 → 看召回 → 勾选采纳 → 导出 Excel）：
 
 ```powershell
-.\scripts\start-qdrant.ps1
-python scripts\serve_pilot_dashboard.py
-# http://127.0.0.1:8787
+# 后端：FastAPI，监听 127.0.0.1:8000
+uv run uvicorn store_scenario_inspiration.app.main:create_app --factory --port 8000
+
+# 前端：Vite + React，开发端口 5173，/api 由 Vite 代理到 8000，因此不需要配 CORS
+cd frontend
+npm install
+npm run dev
 ```
+
+旧的无构建链评审页（`python scripts\serve_pilot_dashboard.py`，:8787）保留作对照；它的页面文件已挪到 `frontend/legacy/index.html`，不再是最前面的入口。
 
 核心新入口：
 
@@ -19,7 +25,8 @@ python scripts\serve_pilot_dashboard.py
 - `scripts/assemble_store_pilot.py`：合并模型软重排和国家库存，保留原始召回。
 - `scripts/deepseek_prepare_store_batch.py`：DeepSeek 多模态读取每店全部截图并生成结构化商品线索；只接受 PH/TH/VN/MY。
 - `scripts/run_deepseek_batches.py`：按 manifest 续跑 DeepSeek 分析、扩写、检索、重排和组装；非四国任务在 API 调用前失败。
-- `scripts/serve_pilot_dashboard.py` + `frontend/index.html`：无构建链的本地评审页。
+- `frontend/`：React + Vite 工作台，也就是现在的应用界面；`src/store_scenario_inspiration/app/` 是它的后端。
+- `scripts/serve_pilot_dashboard.py` + `frontend/legacy/index.html`：旧的无构建链评审页，只作对照。
 
 主 SKU 双语名称清洗契约见 [主 SKU 双语名称清洗契约](docs/2026-09-17-main-sku-bilingual-name-cleaning-contract.md)。标准名称已保留原始字段并形成当前产品资产；后续只对新增或证据变化的主 SKU 增量处理。
 
@@ -165,6 +172,8 @@ uv run store-catalog rollback --index-root 'var\catalog'
 `search` 以只读方式打开 active SQLite 和向量矩阵。原始产品名的融合权重为 1.0，每个由 Codex 生成的正向 `--expanded-query` 权重为 0.7；每个查询分别执行关键词 Top 50 和向量 Top 50，再用偏移量 60 的加权 RRF 按主 SKU 去重。最终 `--top-k` 默认为 20，可设为 1–50。结果返回代表产品名称、子 SKU、命中查询词和关键词/向量来源；语义层不使用排除词或硬相似度阈值，平台明确禁售仍按子 SKU 生效。
 
 这些结果是高召回候选，不直接等同于最终推荐。Codex 使用“场景商品名称 + 用途”对候选的中文名称、英文别名和商品目录做四档软重排：`3=直接匹配`、`2=替代或配套`、`1=场景相邻`、`0=仅词面相关`。所有候选继续保留，只按相关性档位降序、原始 RRF 排名升序稳定排序；缺少、重复或越界的 Codex 判断必须报错，不能静默丢商品。
+
+> 以上四档口径属于**命令行批量链路**（`scripts/deepseek_rerank.py`，被 `scripts/batch_store_pipeline.py` 调用）。2026-09-21 起应用界面走的是另一套：判定单位是**场景**不是商品角色，只有**相关 / 不相关**两档。两套暂时并存，见 [重排改成「按场景判定」两档](docs/2026-09-21-scene-level-rerank.md)。
 
 Codex 负责从截图生成场景、场景中的具体产品、正向扩写词和候选软重排判断；本地 CLI 只负责检索，不在本地重复调用生成模型。
 
