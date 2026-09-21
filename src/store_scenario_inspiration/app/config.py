@@ -8,8 +8,16 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+# The repository's own ``.env``, found by where this file sits rather than by
+# where the process was started. The frontend is run from ``frontend/``, so a
+# relative path would load the keys for one command and silently not the other.
+ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="SSI_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="SSI_", extra="ignore", env_file=ENV_FILE, env_file_encoding="utf-8"
+    )
 
     data_dir: Path = Path(r"E:\Project\store-assortment-copilot\var\pilot")
     asset_db: Path = Path(r"E:\Project\store-assortment-copilot\var\product-asset\catalog.sqlite3")

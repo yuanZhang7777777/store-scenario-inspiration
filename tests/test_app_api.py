@@ -139,9 +139,14 @@ def client(tmp_path, monkeypatch):
 
 @pytest.fixture
 def keyless_client(tmp_path, monkeypatch):
-    """No TypeSafe key: the rerank step has to skip itself, not fail."""
+    """No TypeSafe key: the rerank step has to skip itself, not fail.
+
+    Said out loud rather than left out, because the machine's own .env would
+    otherwise supply one and quietly turn this into the keyed case.
+    """
     install_fakes(monkeypatch)
-    app = create_app(Settings(data_dir=tmp_path, deepseek_api_key="test-key"))
+    app = create_app(Settings(data_dir=tmp_path, deepseek_api_key="test-key",
+                              typesafe_api_key=""))
     with TestClient(app) as client:
         yield client
     app.state.jobs.shutdown()
