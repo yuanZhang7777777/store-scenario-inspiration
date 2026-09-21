@@ -1,0 +1,300 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background: linear-gradient(180deg, #edf4f7 0, #f7f8fb 420px, #f7f8fb 100%);
+  font: 14px/1.65 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+button { font: inherit; cursor: pointer; }
+a { color: var(--teal); }
+
+.shell { width: min(1240px, calc(100% - 32px)); margin: 0 auto 72px; }
+
+.hero { padding: 40px 0 22px; }
+.eyebrow {
+  margin: 0 0 8px; color: var(--teal); font-size: 12px; font-weight: 800;
+  letter-spacing: .14em; text-transform: uppercase;
+}
+h1 { margin: 0; font-size: clamp(26px, 3.4vw, 42px); line-height: 1.15; letter-spacing: -.03em; }
+.subtitle { margin: 10px 0 0; color: var(--muted); font-size: 15px; max-width: 760px; }
+
+.card {
+  background: rgba(255, 255, 255, .96);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+
+section.card { padding: 22px; margin-bottom: 16px; }
+section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
+
+.btn {
+  padding: 10px 18px; border: 1px solid var(--navy); border-radius: 999px;
+  color: white; background: var(--navy); font-weight: 700;
+}
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.ghost { color: var(--navy); background: white; border-color: var(--line); }
+.btn.small { padding: 5px 12px; font-size: 12px; font-weight: 700; }
+
+/* ---------- upload ---------- */
+
+.drop {
+  display: grid; place-items: center; gap: 6px; padding: 30px;
+  border: 2px dashed #c6d4e2; border-radius: 16px; background: var(--soft);
+  color: var(--muted); text-align: center; transition: border-color .15s, background .15s;
+}
+.drop.over { border-color: var(--teal); background: var(--teal-soft); }
+.drop strong { color: var(--navy); font-size: 15px; }
+
+.field-row { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 16px; }
+.field { display: grid; gap: 6px; min-width: 200px; }
+.field label { color: var(--navy); font-weight: 700; font-size: 13px; }
+.field input, .field select {
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+  color: var(--ink); background: white;
+}
+
+.thumbs { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.thumb {
+  position: relative; width: 132px; padding: 6px; border: 1px solid var(--line);
+  border-radius: 12px; background: white;
+}
+.thumb img { width: 100%; height: 88px; object-fit: cover; border-radius: 8px; display: block; }
+.thumb span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.thumb button {
+  position: absolute; top: -8px; right: -8px; width: 24px; height: 24px;
+  border: 0; border-radius: 50%; color: white; background: #b0392f; line-height: 1;
+}
+
+.notice { padding: 12px 15px; border-radius: 12px; font-weight: 600; }
+.notice.error { color: #7a2018; background: #fdeceb; border: 1px solid #f3c9c5; }
+.notice.warn { color: #7c460d; background: var(--amber-soft); border: 1px solid #f0d6a3; }
+.notice.ok { color: #11685f; background: var(--teal-soft); border: 1px solid #bddfd8; }
+
+/* ---------- store list ---------- */
+
+.store-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.store-item {
+  display: block; padding: 16px; border: 1px solid var(--line); border-radius: 14px;
+  background: linear-gradient(180deg, #fff, #f8fafc); text-decoration: none; color: inherit;
+}
+.store-item:hover { border-color: var(--teal); }
+.store-item strong { display: block; color: var(--navy); font-size: 15px; }
+.store-item small { color: var(--muted); }
+
+/* ---------- pipeline progress ---------- */
+
+.stage-list { display: grid; gap: 8px; }
+.stage {
+  display: grid; grid-template-columns: 26px 1fr auto; gap: 12px; align-items: center;
+  padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcfe;
+}
+.stage .dot {
+  width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  color: white; background: #c3ccd8; font-size: 12px; font-weight: 800;
+}
+.stage[data-status="running"] .dot { background: var(--amber); }
+.stage[data-status="ready"] .dot { background: var(--teal); }
+.stage[data-status="failed"] .dot { background: #b0392f; }
+.stage strong { color: var(--navy); }
+.stage small { display: block; color: var(--muted); }
+.stage .state { color: var(--muted); font-size: 12px; font-weight: 700; }
+.stage[data-status="ready"] .state { color: var(--teal); }
+.stage[data-status="failed"] .state { color: #b0392f; }
+
+.spinner {
+  width: 15px; height: 15px; border: 2px solid rgba(255, 255, 255, .45);
+  border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- scene cards ---------- */
+
+.scene-map { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 13px; }
+.scene-card {
+  padding: 17px; border: 1px solid var(--line); border-radius: 14px;
+  background: linear-gradient(180deg, #fff, #f8fafc); display: grid; gap: 9px;
+  align-content: start;
+}
+.scene-card h3 { margin: 0; color: var(--navy); font-size: 16px; }
+.scene-card p { margin: 0; color: #40516a; }
+
+.muted { color: var(--muted); font-size: 12px; }
+
+/* ---------- the report a manager reads ---------- */
+
+.judged { display: grid; gap: 10px; }
+.verdict { margin: 0; color: var(--navy); font-size: 15px; font-weight: 650; line-height: 1.7; }
+.evi { margin: 0; color: #40516a; }
+.boundary {
+  margin: 16px 0 0; padding: 11px 14px; border-radius: 10px;
+  color: #5b6a80; background: var(--soft); font-size: 12px;
+}
+
+.sub { margin: 18px 0 8px; color: var(--navy); font-size: 14px; }
+.actions { margin: 0; padding-left: 22px; color: #40516a; }
+.actions li { margin-bottom: 6px; }
+
+.lbl {
+  display: inline-block; margin-right: 8px; padding: 1px 7px; border-radius: 6px;
+  color: #11685f; background: var(--teal-soft); font-size: 12px; font-weight: 700;
+}
+
+.people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.person {
+  padding: 15px; border: 1px solid var(--line); border-radius: 14px;
+  background: linear-gradient(180deg, #fff, #f8fafc); display: grid; gap: 7px; align-content: start;
+}
+.person h3 { margin: 0; color: var(--navy); font-size: 15px; }
+.person p { margin: 0; color: #40516a; }
+
+/* ---------- the operator's door ---------- */
+
+.crumb { margin: 0 0 12px; font-size: 13px; }
+.crumb a { text-decoration: none; font-weight: 700; }
+
+.store-head { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; }
+.store-head h2 { margin-bottom: 4px; }
+.run-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.count {
+  display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px;
+  background: var(--soft); color: var(--muted); font-size: 12px; font-weight: 700;
+}
+
+/* ---------- the one product-level lever ---------- */
+
+.clue-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 7px; }
+.clue {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center;
+  padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fbfcfe;
+}
+.clue strong { color: var(--navy); font-weight: 650; }
+.clue small { display: block; color: var(--muted); }
+.pick-clue { cursor: pointer; }
+.pick-clue:hover { border-color: var(--teal); }
+.pick-clue input { width: 16px; height: 16px; accent-color: var(--teal); }
+.pick-clue[data-off="true"] strong { color: #78859a; text-decoration: line-through; }
+.pick-clue[data-off="true"] { background: #f4f6f9; }
+.role-tag {
+  padding: 2px 8px; border-radius: 999px; background: var(--soft); color: var(--muted);
+  font-size: 11px; font-style: normal; white-space: nowrap;
+}
+
+.tag {
+  margin-left: 8px; padding: 1px 7px; border-radius: 999px; font-size: 11px;
+  font-style: normal; font-weight: 700;
+}
+.tag.paid { color: #7c460d; background: var(--amber-soft); }
+.tag.free { color: #11685f; background: var(--teal-soft); }
+
+/* ---------- the knobs ---------- */
+
+.knobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.knob {
+  display: grid; gap: 6px; padding: 14px; border: 1px solid var(--line);
+  border-radius: 14px; background: #fbfcfe;
+}
+.knob[data-changed="true"] { border-color: var(--teal); background: var(--teal-soft); }
+.knob-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.knob-head strong { color: var(--navy); font-size: 13px; }
+.knob-head .tag { margin-left: 0; }
+.knob input, .knob select {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px;
+  color: var(--ink); background: white; font: inherit; width: 100%;
+}
+.knob .hint { color: #5b6a80; }
+.knob-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+.knobs-heading {
+  margin: 22px 0 6px; padding-top: 18px; border-top: 1px solid var(--line);
+  color: var(--navy); font-size: 14px;
+}
+.knobs-note { margin: 0 0 12px; color: #5b6a80; font-size: 12.5px; }
+
+/* ---------- candidates, and picking them ---------- */
+
+.roles-open { display: grid; gap: 3px; margin: 2px 0; }
+.role-head {
+  display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center;
+  width: 100%; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent;
+  text-align: left;
+}
+.role-head:hover { background: var(--soft); }
+.role-head[data-open="true"] { background: var(--soft); }
+.role-name { color: var(--navy); font-weight: 650; font-size: 12px; }
+.role-name.excluded { color: #78859a; text-decoration: line-through; }
+.role-head .tag { margin-left: 0; }
+.role-count { color: var(--muted); font-size: 11px; }
+.chev { color: var(--teal); font-size: 11px; font-weight: 700; }
+
+.candidates { padding: 10px 8px 4px; border-top: 1px dashed var(--line); }
+.queries { margin: 0 0 8px; color: #40516a; font-size: 12px; }
+
+.candidate-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+/* Two lines, because a scene card is only ~390px wide and the name is what the
+   operator reads — everything else can wrap under it. */
+.pick {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "check names above" ". meta meta";
+  column-gap: 9px; row-gap: 3px;
+  padding: 6px 8px; border: 1px solid transparent;
+  border-radius: 9px; background: #fbfcfe;
+}
+.pick:hover { border-color: var(--line); }
+.pick[data-on="true"] { border-color: #bddfd8; background: var(--teal-soft); }
+.pick input { grid-area: check; align-self: start; margin-top: 3px;
+  width: 15px; height: 15px; accent-color: var(--teal); }
+.pick .names { grid-area: names; display: grid; min-width: 0; }
+.pick .names strong { color: var(--navy); font-size: 12px; font-weight: 650; }
+.pick .names small { color: var(--muted); font-size: 11px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.pick .meta { grid-area: meta; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pick .rank { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.pick .sku { color: #5b6a80; font-size: 11px; font-family: ui-monospace, "Cascadia Mono", monospace; }
+.pick .channels { display: flex; gap: 3px; }
+.pick .channels em {
+  padding: 1px 6px; border-radius: 6px; background: white; border: 1px solid var(--line);
+  color: #5b6a80; font-size: 10px; font-style: normal; white-space: nowrap;
+}
+/* Shared by the candidate rows and the final list: the same badge in both, so a
+   SKU read as shippable while picking still reads that way while reviewing. */
+.stock {
+  padding: 1px 6px; border-radius: 6px; font-size: 10px;
+  font-style: normal; text-align: center; white-space: nowrap;
+}
+.pick .stock { min-width: 52px; }
+.stock.yes { color: #11685f; background: var(--teal-soft); }
+.stock.no { color: #78859a; background: #eef1f5; }
+
+/* The verdict answers a different question from the stock tag — "does this scene
+   sell it" versus "can we ship it" — so it reads as a word, not a badge. */
+.pick .verdict {
+  padding: 1px 6px; border-radius: 6px; font-size: 10px; font-style: normal;
+  white-space: nowrap; cursor: help;
+}
+.pick .verdict.related { color: #11685f; background: var(--teal-soft); }
+.pick .verdict.unrelated { color: #8a5a12; background: var(--amber-soft); }
+
+/* The bulk-select lever is the point of the ranked list, so it stays visible
+   rather than appearing only on hover. */
+.pick .above {
+  grid-area: above; align-self: start; padding: 3px 8px; border: 1px solid var(--line);
+  border-radius: 6px; background: white; color: var(--muted); font-size: 10px; opacity: .5;
+}
+.pick:hover .above { opacity: 1; }
+.pick .above:hover { border-color: var(--navy); color: var(--navy); }
+
+/* ---------- what the operator finally took ---------- */
+
+.adoption { border-color: #cfe0e6; background: linear-gradient(180deg, #fff, #f4faf9); }
+.adopt-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.dedupe-toggle { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer; }
+.adopted { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.adopted li {
+  display: grid; grid-template-columns: 88px minmax(120px, 1fr) 1fr auto;
+  gap: 10px; align-items: baseline;
+  padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 12px;
+}
+.adopted li:last-child { border-bottom: 0; }

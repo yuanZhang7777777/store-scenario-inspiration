@@ -1,0 +1,15 @@
+/* Carried over from the dashboard this replaces, so the two look like one tool. */
+:root {
+  color-scheme: light;
+  --ink: #17202f;
+  --muted: #647084;
+  --line: #dfe5ed;
+  --paper: #fff;
+  --soft: #f4f7fb;
+  --navy: #153e5b;
+  --teal: #087f73;
+  --teal-soft: #e2f5f1;
+  --amber: #b96513;
+  --amber-soft: #fff3d9;
+  --shadow: 0 12px 36px rgba(26, 48, 71, .09);
+}
