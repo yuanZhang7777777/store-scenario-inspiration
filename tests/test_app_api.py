@@ -421,6 +421,19 @@ def test_retrieval_before_the_stage_has_run_says_which_stage_is_missing(client) 
     assert "retrieval.json" in response.json()["detail"]
 
 
+def test_a_store_that_was_never_created_is_not_a_server_error(client) -> None:
+    """The browser prints whatever comes back, and "500" tells the operator nothing."""
+    response = client.get("/api/stores/no-such-store")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "没有这个店铺"
+
+
+def test_a_store_id_the_workspace_could_not_have_issued_is_rejected(client) -> None:
+    """Ids are generated from store names, so anything else never named a store."""
+    assert client.get("/api/stores/Bad_Id").status_code == 400
+
+
 def test_the_parameter_schema_carries_a_chinese_explanation_per_knob(client) -> None:
     fields = client.get("/api/params/schema").json()["fields"]
 

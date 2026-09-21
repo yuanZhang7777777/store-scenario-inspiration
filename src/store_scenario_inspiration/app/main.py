@@ -12,8 +12,8 @@ import io
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from ..pipeline.clues import (
@@ -81,6 +81,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.workspace = workspace
     app.state.jobs = jobs
+
+    # A store id in the URL that was never issued, or that no longer resolves to
+    # a directory, is the caller's mistake rather than a fault on this side.
+    # Without these two the raised ValueError and FileNotFoundError come back as
+    # a bare "500 Internal Server Error", which the browser shows verbatim and
+    # which says nothing about what to do next.
+    @app.exception_handler(ValueError)
+    async def _rejected(_request: Request, error: ValueError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": str(error)})
+
+    @app.exception_handler(FileNotFoundError)
+    async def _missing(_request: Request, error: FileNotFoundError) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": "没有这个店铺"})
 
     @app.get("/api/health")
     def health() -> dict:
