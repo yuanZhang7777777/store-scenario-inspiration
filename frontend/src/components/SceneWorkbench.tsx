@@ -82,6 +82,17 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
+/**
+ * Where the search itself had a taken-away row.
+ *
+ * Everything in that group carries the same verdict — one question per scene,
+ * one "not related" for all of them — so the label cannot order it, and the only
+ * thing left to read the list by is how close the recall thought each row was.
+ */
+function byRecall(candidate: Candidate): number {
+  return candidate.recall_rank ?? candidate.rank;
+}
+
 /** Undo `selKey`, so the ticked rows can be sent back as the names they are. */
 function parseSelKey(key: string): Pick {
   const [scene_name, product_cn, main_sku] = key.split("::");
@@ -124,7 +135,8 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
   const adopted = useMemo(() => {
     const bySku = new Map<string, { row: Candidate; where: string[] }>();
     for (const item of retrieval?.scenes ?? []) {
-      const rows = item.candidates ?? [];
+      // Taken-away rows are pickable too — the operator's call, not the model's.
+      const rows = [...(item.candidates ?? []), ...(item.dropped ?? [])];
       for (const candidate of rows) {
         if (!picked.has(selKey(item.scene_name, item.product_cn, candidate.main_sku))) continue;
         const entry = bySku.get(candidate.main_sku) ?? { row: candidate, where: [] };
@@ -157,6 +169,65 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
       }
       return next;
     });
+  }
+
+  /**
+   * One candidate row, the same in both groups.
+   *
+   * A row the model took away is drawn exactly like one it left: same name,
+   * same stock, same tick box landing in the same list. The only difference is
+   * that the group it sits in already says why it is not above.
+   */
+  function row(item: RetrievalProduct, candidate: Candidate, taken: boolean) {
+    const on = picked.has(selKey(item.scene_name, item.product_cn, candidate.main_sku));
+    const stock = stockLabel(candidate, country);
+    return (
+      <li className="pick" data-on={on} key={candidate.main_sku}>
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={() => toggle(item.scene_name, item.product_cn, candidate.main_sku)}
+        />
+        <span className="names">
+          <strong>{candidate.standard_name_cn}</strong>
+          <small>{candidate.standard_name_en}</small>
+        </span>
+        <span className="meta">
+          <span className="rank">{taken ? byRecall(candidate) : candidate.rank}</span>
+          {candidate.rerank ? (
+            <em
+              className={`verdict ${candidate.rerank}`}
+              title={VERDICT_TITLE[candidate.rerank] ?? ""}
+            >
+              {VERDICT[candidate.rerank] ?? candidate.rerank}
+            </em>
+          ) : null}
+          <span className="sku">{candidate.main_sku}</span>
+          <span className="channels">
+            {candidate.channels.map((channel) => (
+              <em key={channel}>{CHANNEL[channel] ?? channel}</em>
+            ))}
+          </span>
+          {stocked ? (
+            <em
+              className={`stock ${stock.yes ? "yes" : "no"}`}
+              title="目标国家当前可发的量，跟着库存快照走"
+            >
+              {stock.text}
+            </em>
+          ) : null}
+        </span>
+        {taken ? null : (
+          <button
+            className="above"
+            title="这一行及更相关的全部选中"
+            onClick={() => selectAbove(item, candidate.rank)}
+          >
+            以上全选
+          </button>
+        )}
+      </li>
+    );
   }
 
   async function copyList() {
@@ -201,7 +272,10 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
   const doubted = useMemo(() => {
     const judged = new Set<string>();
     for (const item of retrieval?.scenes ?? []) {
-      for (const row of item.candidates ?? []) {
+      // Both piles: in 排除 mode the doubted rows are exactly the ones that
+      // left the list, so counting only what stayed would understate what the
+      // model was asked and answered.
+      for (const row of [...(item.candidates ?? []), ...(item.dropped ?? [])]) {
         if (row.rerank === "unrelated") judged.add(`${item.scene_name}::${row.main_sku}`);
       }
     }
@@ -250,6 +324,9 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
                   const expanded = open === key;
                   const excluded = scene.excluded.includes(need.product_cn);
                   const rows = item?.candidates ?? [];
+                  // Empty unless the operator switched the setting to 排除: the
+                  // default keeps every doubted row in the list above.
+                  const taken = item?.dropped ?? [];
                   const count = rows.length;
                   return (
                     <div className="role" key={need.product_cn}>
@@ -263,7 +340,11 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
                         </span>
                         {excluded && <em className="tag">你已排除</em>}
                         <span className="role-count">
-                          {item ? `${count} 个候选` : "还没检索"}
+                          {!item
+                            ? "还没检索"
+                            : taken.length > 0
+                              ? `${count} 个候选，另 ${taken.length} 条已排除`
+                              : `${count} 个候选`}
                         </span>
                         <span className="chev">{expanded ? "收起" : "展开"}</span>
                       </button>
@@ -274,64 +355,25 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
                             <span className="lbl">检索词</span>
                             {[...item.queries.cn, ...item.queries.en].join("、")}
                           </p>
-                          {count === 0 ? (
+                          {count === 0 && taken.length === 0 ? (
                             <p className="muted">这个商品在产品库里没搜到候选。</p>
                           ) : (
                             <ul className="candidate-list">
-                              {rows.map((candidate) => {
-                                const on = picked.has(
-                                  selKey(scene.scene_name, need.product_cn, candidate.main_sku),
-                                );
-                                const stock = stockLabel(candidate, country);
-                                return (
-                                  <li className="pick" data-on={on} key={candidate.main_sku}>
-                                    <input
-                                      type="checkbox"
-                                      checked={on}
-                                      onChange={() =>
-                                        toggle(scene.scene_name, need.product_cn, candidate.main_sku)
-                                      }
-                                    />
-                                    <span className="names">
-                                      <strong>{candidate.standard_name_cn}</strong>
-                                      <small>{candidate.standard_name_en}</small>
-                                    </span>
-                                    <span className="meta">
-                                      <span className="rank">{candidate.rank}</span>
-                                      {candidate.rerank ? (
-                                        <em
-                                          className={`verdict ${candidate.rerank}`}
-                                          title={VERDICT_TITLE[candidate.rerank] ?? ""}
-                                        >
-                                          {VERDICT[candidate.rerank] ?? candidate.rerank}
-                                        </em>
-                                      ) : null}
-                                      <span className="sku">{candidate.main_sku}</span>
-                                      <span className="channels">
-                                        {candidate.channels.map((channel) => (
-                                          <em key={channel}>{CHANNEL[channel] ?? channel}</em>
-                                        ))}
-                                      </span>
-                                      {stocked ? (
-                                        <em
-                                          className={`stock ${stock.yes ? "yes" : "no"}`}
-                                          title="目标国家当前可发的量，跟着库存快照走"
-                                        >
-                                          {stock.text}
-                                        </em>
-                                      ) : null}
-                                    </span>
-                                    <button
-                                      className="above"
-                                      title="这一行及更相关的全部选中"
-                                      onClick={() => selectAbove(item, candidate.rank)}
-                                    >
-                                      以上全选
-                                    </button>
-                                  </li>
-                                );
-                              })}
+                              {rows.map((candidate) => row(item, candidate, false))}
                             </ul>
+                          )}
+                          {taken.length > 0 && (
+                            <>
+                              <p className="taken-head">
+                                模型判成不相关、按你的设置排除掉的 {taken.length} 条。
+                                越靠前越是搜索当时觉得接近的，想用哪条直接勾上。
+                              </p>
+                              <ul className="candidate-list taken">
+                                {[...taken]
+                                  .sort((a, b) => byRecall(a) - byRecall(b))
+                                  .map((candidate) => row(item, candidate, true))}
+                              </ul>
+                            </>
                           )}
                         </div>
                       )}

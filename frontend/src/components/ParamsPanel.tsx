@@ -49,6 +49,15 @@ function cost(name: keyof Params, billed: boolean): { text: string; free: boolea
   if (name === "rerank_provider") {
     return billed ? { text: "改用后会调用 DeepSeek", free: false } : { text: "免费重跑", free: true };
   }
+  // The recall knobs cannot go alone: re-recalling wipes the verdicts, so the
+  // judgement has to be re-asked with them, and on DeepSeek that is a call per
+  // scene. The knob itself is still free, which is exactly why saying only that
+  // would be misleading.
+  if (LOCAL[name]?.includes("retrieval")) {
+    return billed
+      ? { text: "召回免费，重标要计费", free: false }
+      : { text: "免费重跑", free: true };
+  }
   return LOCAL[name] ? { text: "免费重跑", free: true } : { text: "需重新生成", free: false };
 }
 
@@ -81,12 +90,20 @@ export default function ParamsPanel({ storeId, params, onSaved, onRun, busy, can
   // Whatever the changed knobs need, in pipeline order and each stage once.
   // With nothing changed the button is the plain recall, which is what an
   // operator reaching for it usually wants.
-  const rerunStages =
+  const wanted = new Set(
     localChanged.length === 0
       ? ["clues", "retrieval"]
       : ["clues", "retrieval", "rerank"].filter((stage) =>
           localChanged.some((field) => LOCAL[field.name]?.includes(stage)),
-        );
+        ),
+  );
+  // Re-recalling throws the verdicts away — run_retrieval deletes them on
+  // purpose, because they were answers about a list that no longer exists. So
+  // the judgement rides along or the operator is stranded: a fresh list with no
+  // labels on it, and no free way back, since every knob that would re-ask the
+  // question now sits at the value they just saved.
+  if (wanted.has("retrieval")) wanted.add("rerank");
+  const rerunStages = ["clues", "retrieval", "rerank"].filter((stage) => wanted.has(stage));
   const rerunLabel = rerunStages.includes("retrieval") ? "重跑召回" : "重新标一遍相关性";
   // Rerunning the verdicts is free only when it asks the same question again,
   // because the answer is cached by exactly what was asked — scene, its product

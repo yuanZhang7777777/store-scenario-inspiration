@@ -286,6 +286,17 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
 .pick:hover .above { opacity: 1; }
 .pick .above:hover { border-color: var(--navy); color: var(--navy); }
 
+/* The rows the verdict pass took away. Set back by one shade so the list the
+   operator is actually working from stays the louder of the two — but still
+   fully live: it is a reading list, not a log. */
+.taken-head {
+  margin: 12px 0 6px; padding-top: 9px; border-top: 1px dashed var(--line);
+  color: var(--muted); font-size: 11px;
+}
+.candidate-list.taken .pick { background: #f7f8fa; }
+.candidate-list.taken .pick[data-on="true"] { background: var(--teal-soft); }
+.candidate-list.taken .pick .names strong { color: #40516a; }
+
 /* ---------- what the operator finally took ---------- */
 
 .adoption { border-color: #cfe0e6; background: linear-gradient(180deg, #fff, #f4faf9); }
