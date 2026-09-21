@@ -194,15 +194,19 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
   // Counted off the rows rather than read from the summary: the summary only
   // counts what was removed, and in the default mode nothing is removed — "剔除
   // 0 条" said nothing about the ninety rows the model had actually doubted.
-  const doubted = useMemo(
-    () =>
-      (retrieval?.scenes ?? []).reduce(
-        (total, item) =>
-          total + (item.candidates ?? []).filter((row) => row.rerank === "unrelated").length,
-        0,
-      ),
-    [retrieval],
-  );
+  //
+  // Counted per scene and SKU, the way the sentence's two neighbours are: one
+  // verdict marked on five roles is one judgement, and adding the five rows up
+  // would print more doubts than the model was ever asked about.
+  const doubted = useMemo(() => {
+    const judged = new Set<string>();
+    for (const item of retrieval?.scenes ?? []) {
+      for (const row of item.candidates ?? []) {
+        if (row.rerank === "unrelated") judged.add(`${item.scene_name}::${row.main_sku}`);
+      }
+    }
+    return judged.size;
+  }, [retrieval]);
 
   return (
     <>

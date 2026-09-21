@@ -161,7 +161,7 @@ export default function ParamsPanel({ storeId, params, onSaved, onRun, busy, can
 
       <h3 className="knobs-heading">写作风格</h3>
       <p className="knobs-note">
-        下面三个只管「场景怎么写」，不管「去库里找什么」。改了要重新生成场景才看得出效果。
+        下面这些只管「场景怎么写」，不管「去库里找什么」。改了要重新生成场景才看得出效果。
       </p>
       <div className="knobs">
         {fields.filter((field) => STYLE.includes(field.name)).map(tile)}
