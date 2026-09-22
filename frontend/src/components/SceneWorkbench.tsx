@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
-import { selectionKey, readSelection, normalizedSelections } from "../selection";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { selectionKey, normalizedSelections } from "../selection";
 
-import { api, type Candidate, type Pick, type Retrieval, type RetrievalProduct, type Scene } from "../api";
-
-const CHANNEL: Record<string, string> = {
-  cn_keyword: "中·词",
-  cn_vector: "中·向量",
-  en_keyword: "英·词",
-  en_vector: "英·向量",
-};
+import {
+  api,
+  type Candidate,
+  type Pick,
+  type Retrieval,
+  type RetrievalProduct,
+  type Scene,
+} from "../api";
+import { countryName } from "../countries";
 
 /* One question, two answers: is this product something the scene can sell. The
    model is not asked to grade how close it is — "same" only ever meant "more
@@ -21,9 +22,39 @@ const VERDICT_TITLE: Record<string, string> = {
   unrelated: "模型认为该商品与场景不相关，可人工复核后选择。",
 };
 
+/** How one tick moves across a whole level — a scene, or a role. */
+type Mode = "on" | "off" | "invert";
+
+/** Which rows the list shows. Filtering the view never changes what is picked. */
+type Filter = "all" | "in_stock" | "picked";
+
+/** One ticked row, kept with everything the right-hand list needs to draw it. */
+interface ChosenRow {
+  key: string;
+  pick: Pick;
+  sku: string;
+  name: string;
+  role: string;
+  candidate: Candidate;
+}
+interface ChosenGroup {
+  scene: string;
+  rows: ChosenRow[];
+}
+
 /** Separates the three parts of a selection without colliding with real names. */
 function selKey(scene: string, product: string, sku: string): string {
   return selectionKey(scene, product, sku);
+}
+
+/** Everything a role can offer: the ranked rows, plus any the setting took away. */
+function rowsOf(item: RetrievalProduct | undefined): Candidate[] {
+  return [...(item?.candidates ?? []), ...(item?.dropped ?? [])];
+}
+
+/** The id a jump from the chosen list lands on. */
+function roleId(scene: string, product: string): string {
+  return `role::${scene}::${product}`;
 }
 
 /**
@@ -35,15 +66,17 @@ function selKey(scene: string, product: string, sku: string): string {
  * ever read it.
  *
  * The words match the sheet's stock column row for row — a candidate read here
- * as "TH 可发 6" must not print there as something else.
+ * as "泰国 可发 6" must not print there as something else, and both name the
+ * country rather than printing the code the catalogue is keyed by.
  */
 function stockLabel(candidate: Candidate, country: string): { text: string; yes: boolean } {
-  if (candidate.country_available == null) return { text: "库存未核验", yes: false };
-  if (!candidate.country_available) return { text: `${country} 无货`, yes: false };
+  const name = countryName(country);
+  if (candidate.country_available == null) return { text: "库存没查到", yes: false };
+  if (!candidate.country_available) return { text: `${name} 没货`, yes: false };
   const quantity = candidate.country_available_quantity;
   return typeof quantity === "number"
-    ? { text: `${country} 可发 ${quantity}`, yes: true }
-    : { text: `${country} 有货`, yes: true };
+    ? { text: `${name} 可发 ${quantity}`, yes: true }
+    : { text: `${name} 有货`, yes: true };
 }
 
 function storageKey(storeId: string): string {
@@ -95,11 +128,56 @@ function byRecall(candidate: Candidate): number {
   return candidate.recall_rank ?? candidate.rank;
 }
 
-/** Undo `selKey`, so the ticked rows can be sent back as the names they are. */
-function parseSelKey(key: string): Pick {
-  const value = readSelection(key);
-  if (!value) throw new Error("选择记录已失效，请重新勾选商品。");
-  return value;
+/** The box above a scene or a role. Three states, because two would make "some
+    of this is picked" read the same as "none of it is". */
+function TriCheck({ total, on, label, onChange }: {
+  total: number;
+  on: number;
+  label: string;
+  onChange: () => void;
+}) {
+  const box = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (box.current) box.current.indeterminate = on > 0 && on < total;
+  }, [on, total]);
+  return (
+    <input
+      ref={box}
+      className="tricheck"
+      type="checkbox"
+      aria-label={label}
+      disabled={total === 0}
+      checked={total > 0 && on === total}
+      onChange={onChange}
+    />
+  );
+}
+
+/** The moves the old screen was missing: with only one tick at a time, a wrong
+    batch could be neither un-picked nor flipped.
+
+    One button for both ends. "全选" and "全不选" are the same switch seen from
+    either side, so the label follows the group: nothing ticked reads 全选, all of
+    it ticked reads 全不选, and either way pressing it settles the whole group. */
+function Bulk({ total, on, keys, setKeys }: {
+  total: number;
+  on: number;
+  keys: string[];
+  setKeys: (keys: string[], mode: Mode) => void;
+}) {
+  const all = total > 0 && on === total;
+  return (
+    <span className="bulk">
+      <button
+        type="button"
+        disabled={keys.length === 0}
+        onClick={() => setKeys(keys, all ? "off" : "on")}
+      >
+        {all ? "全不选" : "全选"}
+      </button>
+      <button type="button" disabled={keys.length === 0} onClick={() => setKeys(keys, "invert")}>反选</button>
+    </span>
+  );
 }
 
 interface Props {
@@ -109,8 +187,14 @@ interface Props {
 }
 
 export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
-  const [open, setOpen] = useState("");
+  // Both levels start folded: a scene card is a line of text, and a role's fifty
+  // candidate rows are drawn only once somebody asks for that one role. Opening
+  // every role of every scene at once is fifteen thousand rows of table for a
+  // screen that shows twenty, which is what made the page die.
+  const [openScenes, setOpenScenes] = useState<Set<string>>(() => new Set());
+  const [openRoles, setOpenRoles] = useState<Set<string>>(() => new Set());
   const [picked, setPicked] = useState<Set<string>>(() => loadSet(storageKey(storeId)));
+  const [filter, setFilter] = useState<Filter>("all");
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
@@ -128,6 +212,9 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
     catch { setNote("浏览器未能保存勾选记录，请在离开前导出清单。"); }
   }, [picked, storeId]);
 
+  const stocked = retrieval?.inventory === "available";
+  const country = retrieval?.country ?? "";
+
   const byScene = useMemo(() => {
     const map = new Map<string, RetrievalProduct>();
     for (const item of retrieval?.scenes ?? []) {
@@ -136,43 +223,117 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
     return map;
   }, [retrieval]);
 
-  const adopted = useMemo(() => {
-    const bySku = new Map<string, { row: Candidate; where: string[] }>();
-    for (const item of retrieval?.scenes ?? []) {
-      // Taken-away rows are pickable too — the operator's call, not the model's.
-      const rows = [...(item.candidates ?? []), ...(item.dropped ?? [])];
-      for (const candidate of rows) {
-        if (!picked.has(selKey(item.scene_name, item.product_cn, candidate.main_sku))) continue;
-        const entry = bySku.get(candidate.main_sku) ?? { row: candidate, where: [] };
-        entry.where.push(`${item.scene_name} · ${item.product_cn}`);
-        bySku.set(candidate.main_sku, entry);
+  /** Every key a scene offers, and the same for each of its roles. */
+  const keysOf = useMemo(() => {
+    const boxes = new Map<string, { keys: string[]; total: number; on: number }>();
+    const count = (key: string) => boxes.get(key) ?? { keys: [], total: 0, on: 0 };
+    for (const scene of scenes) {
+      for (const need of scene.product_needs) {
+        const roleKey = selKey(scene.scene_name, need.product_cn, "");
+        const item = byScene.get(roleKey);
+        const sceneBox = count(scene.scene_name);
+        const roleBox = count(roleKey);
+        for (const candidate of rowsOf(item)) {
+          const key = selKey(scene.scene_name, need.product_cn, candidate.main_sku);
+          const on = picked.has(key);
+          sceneBox.keys.push(key);
+          roleBox.keys.push(key);
+          sceneBox.total += 1;
+          roleBox.total += 1;
+          if (on) { sceneBox.on += 1; roleBox.on += 1; }
+        }
+        boxes.set(scene.scene_name, sceneBox);
+        boxes.set(roleKey, roleBox);
       }
     }
-    return [...bySku.entries()].map(([sku, entry]) => ({ sku, ...entry }));
-  }, [retrieval, picked]);
+    return boxes;
+  }, [scenes, byScene, picked]);
 
-  function toggle(scene: string, product: string, sku: string) {
-    const key = selKey(scene, product, sku);
+  /**
+   * What the operator has ticked, grouped the way the report reads it.
+   *
+   * Built by walking the same scenes the left-hand list draws, so the panel can
+   * never show a row the list has no home for — and the sheet is written from
+   * this list rather than from the raw ticks, which is why the two agree.
+   */
+  const chosen = useMemo(() => {
+    const groups: ChosenGroup[] = [];
+    for (const scene of scenes) {
+      const rows: ChosenRow[] = [];
+      for (const need of scene.product_needs) {
+        const item = byScene.get(selKey(scene.scene_name, need.product_cn, ""));
+        for (const candidate of rowsOf(item)) {
+          const key = selKey(scene.scene_name, need.product_cn, candidate.main_sku);
+          if (!picked.has(key)) continue;
+          rows.push({
+            key,
+            pick: {
+              scene_name: scene.scene_name,
+              product_cn: need.product_cn,
+              main_sku: candidate.main_sku,
+            },
+            sku: candidate.main_sku,
+            name: candidate.standard_name_cn,
+            role: need.product_cn,
+            candidate,
+          });
+        }
+      }
+      if (rows.length > 0) groups.push({ scene: scene.scene_name, rows });
+    }
+    return groups;
+  }, [scenes, byScene, picked]);
+
+  const chosenCount = chosen.reduce((total, group) => total + group.rows.length, 0);
+
+  function setKeys(keys: string[], mode: Mode) {
     setPicked((current) => {
       const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      for (const key of keys) {
+        if (mode === "on") next.add(key);
+        else if (mode === "off") next.delete(key);
+        else if (next.has(key)) next.delete(key);
+        else next.add(key);
+      }
       return next;
     });
+  }
+
+  function toggle(scene: string, product: string, sku: string) {
+    setKeys([selKey(scene, product, sku)], "invert");
   }
 
   /** "Select this row and everything above it" — above means at least as relevant. */
   function selectAbove(item: RetrievalProduct, upTo: number) {
     const rows = item.candidates ?? [];
-    setPicked((current) => {
-      const next = new Set(current);
-      for (const candidate of rows) {
-        if (candidate.rank <= upTo) {
-          next.add(selKey(item.scene_name, item.product_cn, candidate.main_sku));
-        }
-      }
-      return next;
-    });
+    setKeys(
+      rows
+        .filter((candidate) => candidate.rank <= upTo)
+        .map((candidate) => selKey(item.scene_name, item.product_cn, candidate.main_sku)),
+      "on",
+    );
+  }
+
+  /**
+   * Go back to where a ticked row lives: open the scene, open that one role,
+   * then bring the row into view. The two opens have to paint first, which is
+   * what the timeout is for. This is the page's only deliberate scroll — the
+   * operator asked for it, so it is the one place that is allowed to move.
+   */
+  function jump(row: ChosenRow, scene: string) {
+    if (filter === "in_stock" && row.candidate.country_available !== true) setFilter("all");
+    setOpenScenes((current) => new Set(current).add(scene));
+    setOpenRoles((current) => new Set(current).add(selKey(scene, row.role, "")));
+    const id = roleId(scene, row.role);
+    window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+  }
+
+  function shows(candidate: Candidate, scene: string, product: string): boolean {
+    if (filter === "in_stock") return candidate.country_available === true;
+    if (filter === "picked") return picked.has(selKey(scene, product, candidate.main_sku));
+    return true;
   }
 
   /**
@@ -206,12 +367,7 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
               {VERDICT[candidate.rerank] ?? candidate.rerank}
             </em>
           ) : null}
-          <span className="sku">{candidate.main_sku}</span>
-          <span className="channels">
-            {candidate.channels.map((channel) => (
-              <em key={channel}>{CHANNEL[channel] ?? channel}</em>
-            ))}
-          </span>
+          <span className="sku" title="货号">{candidate.main_sku}</span>
           {stocked ? (
             <em
               className={`stock ${stock.yes ? "yes" : "no"}`}
@@ -224,7 +380,7 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
         {taken ? null : (
           <button
             className="above"
-            title="选择本行及上方候选"
+            title="把本行和它上面的都勾上"
             onClick={() => selectAbove(item, candidate.rank)}
           >
             以上全选
@@ -235,7 +391,8 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
   }
 
   async function copyList() {
-    setCopied(await copyText(adopted.map((item) => item.sku).join("\n")));
+    const skus = [...new Set(chosen.flatMap((group) => group.rows.map((row) => row.sku)))];
+    setCopied(await copyText(skus.join("\n")));
     window.setTimeout(() => setCopied(false), 1600);
   }
 
@@ -251,7 +408,7 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
     try {
       await api.exportAdoption(
         storeId,
-        [...picked].map(parseSelKey),
+        chosen.flatMap((group) => group.rows.map((row) => row.pick)),
         `${storeId}-店铺场景报告.xlsx`,
         dedupe,
       );
@@ -262,9 +419,9 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
     }
   }
 
-  const stocked = retrieval?.inventory === "available";
-  const country = retrieval?.country ?? "";
-  const inventoryNote = retrieval && !stocked ? "库存暂未核验。以下为商品匹配结果，请确认库存后再使用。" : null;
+  const inventoryNote = retrieval && !stocked
+    ? "这次没查到库存，下面是商品匹配的结果，用之前请先确认有没有货。"
+    : null;
   const rerank = retrieval?.rerank;
   // Counted off the rows rather than read from the summary: the summary only
   // counts what was removed, and in the default mode nothing is removed — "剔除
@@ -287,159 +444,260 @@ export default function SceneWorkbench({ storeId, scenes, retrieval }: Props) {
   }, [retrieval]);
 
   return (
-    <>
-      <section className="card">
+    <div className="scene-workbench">
+      <section className="card scene-pane">
         <h2>
-          场景与候选 SKU <span className="count">{scenes.length} 个场景</span>
+          场景与可选商品 <span className="count">{scenes.length} 个场景</span>
         </h2>
         {inventoryNote && <p className="notice warn">{inventoryNote}</p>}
         {rerank && rerank.notes.length === 0 && (
           <p className="muted">
-            相关性复核：{rerank.answered} 项已完成，其中 {doubted} 项需人工留意
+            帮你复核了一遍：{rerank.answered} 项已看完，其中 {doubted} 项模型觉得对不上
             {rerank.dropped > 0 ? `，去掉 ${rerank.dropped} 条。` : "，都留在列表里。"}
           </p>
         )}
         {rerank && rerank.notes.length > 0 && (
           <p className="notice warn">
-            部分商品未完成复核，候选已保留。详情：{rerank.notes[0]}
-            {rerank.answered === 0 &&
-              " 未获得有效复核结果，保留原始候选供人工判断。"}
+            有 {rerank.answered} 项没复核完，可选商品都留着。详情：{rerank.notes[0]}
+            {rerank.answered === 0 && " 没有拿到有效结果，请人工判断。"}
           </p>
         )}
 
-        <div className="scene-map">
-          {scenes.map((scene) => (
-            <article className="scene-card" key={scene.scene_name}>
-              <h3>{scene.scene_name}</h3>
-              <p>
-                <span className="lbl">人群</span>
-                {scene.audience}
-              </p>
-              <p>
-                <span className="lbl">需求</span>
-                {scene.user_need}
-              </p>
+        <div className="scene-filters" role="group" aria-label="筛选可选商品">
+          <button className="chip" data-on={filter === "all"} onClick={() => setFilter("all")}>
+            全部
+          </button>
+          <button
+            className="chip"
+            data-on={filter === "in_stock"}
+            disabled={!stocked}
+            title={stocked ? "只看这次查到有货的" : "这次没查到库存，用不了这个筛选"}
+            onClick={() => setFilter("in_stock")}
+          >
+            只看有货的
+          </button>
+          <button
+            className="chip"
+            data-on={filter === "picked"}
+            onClick={() => setFilter("picked")}
+          >
+            只看已选的
+          </button>
+        </div>
 
-              <div className="roles-open">
-                {scene.product_needs.map((need) => {
-                  const item = byScene.get(selKey(scene.scene_name, need.product_cn, ""));
-                  const key = selKey(scene.scene_name, need.product_cn, "");
-                  const expanded = open === key;
-                  const excluded = scene.excluded.includes(need.product_cn);
-                  const rows = item?.candidates ?? [];
-                  // Empty unless the operator switched the setting to 排除: the
-                  // default keeps every doubted row in the list above.
-                  const taken = item?.dropped ?? [];
-                  const count = rows.length;
-                  return (
-                    <div className="role" key={need.product_cn}>
-                      <button
-                        className="role-head"
-                        data-open={expanded}
-                        onClick={() => setOpen(expanded ? "" : key)}
-                      >
-                        <span className={excluded ? "role-name excluded" : "role-name"}>
-                          {need.product_cn}
-                        </span>
-                        {excluded && <em className="tag">你已排除</em>}
-                        <span className="role-count">
-                          {!item
-                            ? "待匹配"
-                            : taken.length > 0
-                              ? `${count} 个候选，另 ${taken.length} 条已排除`
-                              : `${count} 个候选`}
-                        </span>
-                        <span className="chev">{expanded ? "收起" : "展开"}</span>
-                      </button>
+        <div className="scene-list">
+          {scenes.map((scene) => {
+            const open = openScenes.has(scene.scene_name);
+            const box = keysOf.get(scene.scene_name) ?? { keys: [], total: 0, on: 0 };
+            return (
+              <article className="scene-card" data-open={open} key={scene.scene_name}>
+                <div className="scene-line">
+                  <TriCheck
+                    total={box.total}
+                    on={box.on}
+                    label={`全选「${scene.scene_name}」`}
+                    onChange={() => setKeys(box.keys, box.on === box.total ? "off" : "on")}
+                  />
+                  <button
+                    className="scene-head"
+                    data-open={open}
+                    onClick={() =>
+                      setOpenScenes((current) => {
+                        const next = new Set(current);
+                        if (next.has(scene.scene_name)) next.delete(scene.scene_name);
+                        else next.add(scene.scene_name);
+                        return next;
+                      })
+                    }
+                  >
+                    <span className="scene-name">{scene.scene_name}</span>
+                    <span className="pick-count">已选 {box.on} / 共 {box.total}</span>
+                    <span className="chev">{open ? "收起" : "展开"}</span>
+                  </button>
+                  <Bulk total={box.total} on={box.on} keys={box.keys} setKeys={setKeys} />
+                </div>
 
-                      {expanded && item && (
-                        <div className="candidates">
-                          <details className="queries"><summary>查看检索词</summary>
-                            <span className="lbl">匹配依据</span>
-                            {[...item.queries.cn, ...item.queries.en].join("、")}
-                          </details>
-                          {count === 0 && taken.length === 0 ? (
-                            <p className="muted">本次匹配范围内未找到候选，不代表整个产品库没有对应商品。</p>
-                          ) : (
-                            <ul className="candidate-list">
-                              {rows.map((candidate) => row(item, candidate, false))}
-                            </ul>
-                          )}
-                          {taken.length > 0 && (
-                            <>
-                              <p className="taken-head">
-                                模型判成不相关、按你的设置排除掉的 {taken.length} 条。
-                                越靠前越是搜索当时觉得接近的，想用哪条直接勾上。
-                              </p>
-                              <ul className="candidate-list taken">
-                                {[...taken]
-                                  .sort((a, b) => byRecall(a) - byRecall(b))
-                                  .map((candidate) => row(item, candidate, true))}
-                              </ul>
-                            </>
-                          )}
-                        </div>
-                      )}
+                {open && (
+                  <div className="scene-body">
+                    <p>
+                      <span className="lbl">人群</span>
+                      {scene.audience}
+                    </p>
+                    <p>
+                      <span className="lbl">需求</span>
+                      {scene.user_need}
+                    </p>
+
+                    <div className="roles-open">
+                      {scene.product_needs.map((need) => {
+                        const roleKey = selKey(scene.scene_name, need.product_cn, "");
+                        const item = byScene.get(roleKey);
+                        const roleOpen = openRoles.has(roleKey);
+                        const excluded = scene.excluded.includes(need.product_cn);
+                        const rows = (item?.candidates ?? []).filter((c) =>
+                          shows(c, scene.scene_name, need.product_cn));
+                        // Empty unless the operator switched the setting to 排除: the
+                        // default keeps every doubted row in the list above.
+                        const taken = (item?.dropped ?? [])
+                          .filter((c) => shows(c, scene.scene_name, need.product_cn))
+                          .sort((a, b) => byRecall(a) - byRecall(b));
+                        const roleBox = keysOf.get(roleKey) ?? { keys: [], total: 0, on: 0 };
+                        return (
+                          <div className="role" id={roleId(scene.scene_name, need.product_cn)} key={need.product_cn}>
+                            <div className="role-line">
+                              <TriCheck
+                                total={roleBox.total}
+                                on={roleBox.on}
+                                label={`全选「${need.product_cn}」`}
+                                onChange={() =>
+                                  setKeys(roleBox.keys, roleBox.on === roleBox.total ? "off" : "on")}
+                              />
+                              <button
+                                className="role-head"
+                                data-open={roleOpen}
+                                disabled={!item}
+                                onClick={() =>
+                                  setOpenRoles((current) => {
+                                    const next = new Set(current);
+                                    if (next.has(roleKey)) next.delete(roleKey);
+                                    else next.add(roleKey);
+                                    return next;
+                                  })
+                                }
+                              >
+                                <span className={excluded ? "role-name excluded" : "role-name"}>
+                                  {need.product_cn}
+                                </span>
+                                {excluded && <em className="tag">你已排除</em>}
+                                <span className="pick-count">
+                                  {item ? `已选 ${roleBox.on} / 共 ${roleBox.total}` : "还没找商品"}
+                                </span>
+                                <span className="chev">{!item ? "" : roleOpen ? "收起" : "展开"}</span>
+                              </button>
+                              <Bulk
+                                total={roleBox.total}
+                                on={roleBox.on}
+                                keys={roleBox.keys}
+                                setKeys={setKeys}
+                              />
+                            </div>
+
+                            {roleOpen && item && (
+                              <div className="candidates">
+                                <details className="queries"><summary>看用了哪些搜索词</summary>
+                                  <span className="lbl">匹配依据</span>
+                                  {[...item.queries.cn, ...item.queries.en].join("、")}
+                                </details>
+                                {rows.length === 0 && taken.length === 0 ? (
+                                  <p className="muted">
+                                    {filter === "all"
+                                      ? "这次没找到可选商品，不代表整个产品库没有对应商品。"
+                                      : "这条筛选下没有可选商品，换成「全部」看看。"}
+                                  </p>
+                                ) : (
+                                  <ul className="candidate-list">
+                                    {rows.map((candidate) => row(item, candidate, false))}
+                                  </ul>
+                                )}
+                                {taken.length > 0 && (
+                                  <>
+                                    <p className="taken-head">
+                                      模型觉得对不上、按你的设置收起来的 {taken.length} 条。
+                                      越靠前越是搜索当时觉得接近的，想用哪条直接勾上。
+                                    </p>
+                                    <ul className="candidate-list taken">
+                                      {taken.map((candidate) => row(item, candidate, true))}
+                                    </ul>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
 
-              <p className="muted">{scene.evidence}</p>
-            </article>
-          ))}
+                    <p className="muted">{scene.evidence}</p>
+                  </div>
+                )}
+              </article>
+            );
+          })}
         </div>
       </section>
 
-      <section className="card adoption">
-        <h2>
-          已选商品 <span className="count">{adopted.length} 个 SKU</span>
-        </h2>
-        {adopted.length === 0 ? (
-          <p className="muted">还没有选中任何 SKU。展开上面的商品，勾选你要采用的候选。</p>
-        ) : (
-          <>
-            <div className="adopt-actions">
-              <button className="btn small" onClick={copyList}>
-                {copied ? "已复制" : "复制 SKU 清单"}
-              </button>
-              <button className="btn ghost small" disabled={busy} onClick={exportSheet}>
-                {busy ? "正在导出…" : "导出 Excel"}
-              </button>
-              <button className="btn ghost small" onClick={() => { if (window.confirm("清空已选商品？")) setPicked(new Set()); }}>
-                清空已选
-              </button>
-              <label
-                className="muted dedupe-toggle"
-                title="新增一张每个 SKU 一行的去重清单，原场景报告保留。"
-              >
-                <input
-                  type="checkbox"
-                  checked={dedupe}
-                  onChange={(e) => setDedupe(e.target.checked)}
-                />
-                附带去重 SKU 清单
-              </label>
-              {note && <span className="muted">{note}</span>}
+      <aside className="chosen-rail" aria-label="已选清单">
+        <section className="card chosen-card">
+          <h2>
+            已选清单 <span className="count">{chosenCount} 条</span>
+          </h2>
+          <p className="muted chosen-hint">勾选记录存在这个浏览器里，换电脑不会有。</p>
+          <div className="chosen-actions">
+            <button className="btn small" disabled={chosenCount === 0 || busy} onClick={exportSheet}>
+              {busy ? "正在导出…" : "导出 Excel"}
+            </button>
+            <button className="btn ghost small" disabled={chosenCount === 0} onClick={copyList}>
+              {copied ? "已复制" : "复制货号"}
+            </button>
+            <button
+              className="btn ghost small"
+              disabled={chosenCount === 0}
+              onClick={() => { if (window.confirm("清空已选商品？")) setPicked(new Set()); }}
+            >
+              清空
+            </button>
+            <label
+              className="muted dedupe-toggle"
+              title="新增一张每个货号一行的去重清单，原场景报告保留。"
+            >
+              <input
+                type="checkbox"
+                checked={dedupe}
+                onChange={(e) => setDedupe(e.target.checked)}
+              />
+              附带去重清单
+            </label>
+            {note && <span className="muted">{note}</span>}
+          </div>
+
+          {chosenCount === 0 ? (
+            <p className="muted">还没选。展开左边的场景，勾你要用的商品。</p>
+          ) : (
+            <div className="chosen-groups">
+              {chosen.map((group) => (
+                <div className="chosen-group" key={group.scene}>
+                  <p className="chosen-scene">
+                    {group.scene} <span className="muted">{group.rows.length} 条</span>
+                  </p>
+                  <ul>
+                    {group.rows.map((item) => (
+                      <li key={item.key}>
+                        <button
+                          className="chosen-jump"
+                          title="跳到左边这一行"
+                          onClick={() => jump(item, group.scene)}
+                        >
+                          <span className="sku">{item.sku}</span>
+                          <strong>{item.name}</strong>
+                          <small>{item.role}</small>
+                        </button>
+                        <button
+                          className="chosen-drop"
+                          title="取消这一条"
+                          aria-label={`取消 ${item.name}`}
+                          onClick={() => setKeys([item.key], "off")}
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
-            <ul className="adopted">
-              {adopted.map((item) => {
-                const stock = stockLabel(item.row, country);
-                return (
-                  <li key={item.sku}>
-                    <span className="sku">{item.sku}</span>
-                    <strong>{item.row.standard_name_cn}</strong>
-                    <span className="muted">{item.where.join("；")}</span>
-                    {stocked && (
-                      <em className={`stock ${stock.yes ? "yes" : "no"}`}>{stock.text}</em>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </>
-        )}
-      </section>
-    </>
+          )}
+        </section>
+      </aside>
+    </div>
   );
 }

@@ -61,6 +61,10 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
   position: relative; width: 132px; padding: 6px; border: 1px solid var(--line);
   border-radius: 12px; background: white;
 }
+/* The image is the click target, so the button around it is stripped back to
+   it; the × that removes the file is a sibling, not a child. */
+.thumb .shot { width: 100%; padding: 0; border: 0; border-radius: 8px; }
+.thumb .shot img { height: 88px; }
 .thumb img { width: 100%; height: 88px; object-fit: cover; border-radius: 8px; display: block; }
 .thumb span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .thumb button {
@@ -92,28 +96,127 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---------- scene cards ---------- */
+/* ---------- scenes and the chosen list that rides beside them ---------- */
 
-.scene-map { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 13px; }
-.scene-card {
-  padding: 17px; border: 1px solid var(--line); border-radius: 14px;
-  background: linear-gradient(180deg, #fff, #f8fafc); display: grid; gap: 9px;
-  align-content: start;
+.scene-workbench { display: grid; grid-template-columns: minmax(0, 1fr) 252px; gap: 16px; align-items: start; }
+.scene-pane { min-width: 0; }
+.chosen-rail { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+
+.scene-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 12px; }
+.chip {
+  padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px;
+  background: white; color: var(--muted); font-size: 12px; font-weight: 650;
 }
-.scene-card h3 { margin: 0; color: var(--navy); font-size: 16px; }
-.scene-card p { margin: 0; color: #40516a; }
+.chip:hover:not(:disabled) { border-color: var(--teal); color: var(--navy); }
+.chip[data-on="true"] { border-color: var(--teal); background: var(--teal-soft); color: #11685f; }
+.chip:disabled { opacity: .45; cursor: not-allowed; }
+
+.scene-list { display: grid; gap: 9px; }
+.scene-card {
+  padding: 11px 13px; border: 1px solid var(--line); border-radius: 14px;
+  background: linear-gradient(180deg, #fff, #f8fafc);
+}
+.scene-card[data-open="true"] { background: #fff; }
+.scene-body { display: grid; gap: 8px; padding: 8px 2px 2px; }
+.scene-body p { margin: 0; color: #40516a; }
+
+.scene-line, .role-line {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px; align-items: center;
+}
+.scene-head, .role-head {
+  display: grid; gap: 8px; align-items: center; width: 100%;
+  padding: 6px 8px; border: 0; border-radius: 8px;
+  background: transparent; color: inherit; text-align: left;
+}
+.scene-head { grid-template-columns: minmax(0, 1fr) auto auto; }
+.role-head { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+.scene-head:hover, .role-head:hover,
+.scene-head[data-open="true"], .role-head[data-open="true"] { background: var(--soft); }
+.scene-name { color: var(--navy); font-weight: 650; font-size: 14px; }
+.pick-count { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tricheck { width: 16px; height: 16px; accent-color: var(--teal); }
+
+/* Kept visible rather than hover-only: the whole complaint was that a picked
+   batch could not be undone or flipped. */
+.bulk { display: flex; gap: 1px; }
+.bulk button {
+  padding: 3px 6px; border: 0; border-radius: 6px;
+  background: none; color: var(--muted); font-size: 11px;
+}
+.bulk button:hover:not(:disabled) { color: var(--navy); background: var(--soft); }
+.bulk button:disabled { opacity: .4; cursor: default; }
+
+/* ---------- the chosen list ---------- */
+
+.chosen-card { padding: 15px; }
+.chosen-card h2 { margin: 0 0 4px; font-size: 15px; }
+.chosen-hint { margin: 0 0 10px; }
+.chosen-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+.chosen-groups { display: grid; gap: 10px; max-height: 46vh; overflow: auto; }
+.chosen-scene { margin: 0 0 4px; color: var(--navy); font-size: 12px; font-weight: 700; }
+.chosen-scene .muted { font-weight: 400; }
+.chosen-group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.chosen-group li {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px; align-items: start; border-radius: 8px;
+}
+.chosen-group li:hover { background: var(--soft); }
+.chosen-jump {
+  display: grid; gap: 1px; min-width: 0; padding: 5px 6px;
+  border: 0; border-radius: 8px; background: transparent; color: inherit; text-align: left;
+}
+.chosen-jump strong, .chosen-jump small {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chosen-jump .sku { color: #5b6a80; font-size: 10.5px; font-family: ui-monospace, "Cascadia Mono", monospace; }
+.chosen-jump strong { color: var(--navy); font-size: 12px; font-weight: 650; }
+.chosen-jump small { color: var(--muted); font-size: 10.5px; }
+.chosen-drop {
+  width: 22px; height: 22px; margin-top: 4px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--muted); font-size: 14px; line-height: 1;
+}
+.chosen-drop:hover { color: #b0392f; background: #fdeceb; }
 
 .muted { color: var(--muted); font-size: 12px; }
+
+/* ---------- one screenshot, full size ---------- */
+
+.viewer {
+  position: fixed; inset: 0; z-index: 60; display: grid;
+  grid-template-rows: auto minmax(0, 1fr); gap: 10px; padding: 16px;
+  background: rgba(12, 24, 36, .82);
+}
+.viewer-bar {
+  display: flex; gap: 12px; align-items: center; justify-content: space-between;
+  color: white; font-size: 13px; overflow-wrap: anywhere;
+}
+.viewer-bar .muted { color: #b9c6d4; }
+.viewer-stage {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px; align-items: center; min-height: 0; cursor: default;
+}
+.viewer-stage img {
+  max-width: 100%; max-height: 100%; margin: 0 auto; display: block;
+  border-radius: 10px; background: white;
+}
+.viewer-step {
+  width: 40px; height: 40px; border: 1px solid rgba(255, 255, 255, .35);
+  border-radius: 50%; background: rgba(255, 255, 255, .12); color: white;
+  font-size: 22px; line-height: 1;
+}
+.viewer-step:hover { background: rgba(255, 255, 255, .26); }
+
+@media (max-width: 900px) {
+  .scene-workbench { grid-template-columns: minmax(0, 1fr); }
+  .chosen-rail { position: static; max-height: none; }
+}
 
 /* ---------- the report a manager reads ---------- */
 
 .judged { display: grid; gap: 10px; }
 .verdict { margin: 0; color: var(--navy); font-size: 15px; font-weight: 650; line-height: 1.7; }
 .evi { margin: 0; color: #40516a; }
-.boundary {
-  margin: 16px 0 0; padding: 11px 14px; border-radius: 10px;
-  color: #5b6a80; background: var(--soft); font-size: 12px;
-}
 
 .sub { margin: 18px 0 8px; color: var(--navy); font-size: 14px; }
 .actions { margin: 0; padding-left: 22px; color: #40516a; }
@@ -137,9 +240,34 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
 .crumb { margin: 0 0 12px; font-size: 13px; }
 .crumb a { text-decoration: none; font-weight: 700; }
 
-.store-head { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; }
+.store-head { display: grid; gap: 14px; }
+.store-head-top { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; }
 .store-head h2 { margin-bottom: 4px; }
 .run-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* The screenshots the report was written from, under the store's own name.
+   Each tile is also where a picture is dropped, so what is being changed sits
+   with the thing that says it changed. */
+.shot-strip { display: flex; flex-wrap: wrap; gap: 8px; }
+.shot {
+  position: relative; display: grid; gap: 4px; width: 132px; padding: 5px;
+  border: 1px solid var(--line); border-radius: 12px; background: white; text-align: left;
+}
+.shot:hover { border-color: var(--teal); }
+.shot-open { padding: 0; border: 0; background: none; cursor: zoom-in; }
+.shot img { width: 100%; height: 76px; object-fit: cover; border-radius: 8px; display: block; }
+.shot span { color: var(--muted); font-size: 10.5px; overflow-wrap: anywhere; }
+.shot-drop {
+  position: absolute; top: -8px; right: -8px; width: 22px; height: 22px; padding: 0;
+  border: 0; border-radius: 50%; color: white; background: #b0392f; line-height: 1;
+  opacity: 0; transition: opacity .12s ease;
+}
+.shot:hover .shot-drop, .shot-drop:focus { opacity: 1; }
+.shot-add {
+  place-content: center; min-height: 118px; border-style: dashed; cursor: pointer;
+  color: var(--muted); font-weight: 700; text-align: center;
+}
+.shot-add:hover { color: var(--teal); }
 
 .count {
   display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px;
@@ -148,13 +276,24 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
 
 /* ---------- the one product-level lever ---------- */
 
-.clue-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 7px; }
+/* Names are short and there are many of them, so the grid is sized for the name
+   rather than for a row: the role and the count sit on one line under it, which
+   buys about half again as many per row. */
+.clue-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(208px, 1fr)); gap: 7px; }
 .clue {
-  display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center;
-  padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fbfcfe;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 9px; align-items: center;
+  padding: 8px 11px; border: 1px solid var(--line); border-radius: 10px; background: #fbfcfe;
 }
 .clue strong { color: var(--navy); font-weight: 650; }
 .clue small { display: block; color: var(--muted); }
+.clue small.meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* What the screenshot said, under the name it was translated into. Lighter than
+   the counts line, so the Chinese name stays the thing being read. Listing
+   titles run long, so it is clipped rather than allowed to set the row height. */
+.clue small.original {
+  color: #9aa6b8; font-size: 11.5px; word-break: break-word;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
 .pick-clue { cursor: pointer; }
 .pick-clue:hover { border-color: var(--teal); }
 .pick-clue input { width: 16px; height: 16px; accent-color: var(--teal); }
@@ -163,6 +302,16 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
 .role-tag {
   padding: 2px 8px; border-radius: 999px; background: var(--soft); color: var(--muted);
   font-size: 11px; font-style: normal; white-space: nowrap;
+}
+/* No screenshot behind this one, so it reads differently from the rest at a glance. */
+.role-tag.manual { background: var(--teal-soft); color: #11685f; font-weight: 700; }
+.clue-tags { display: flex; align-items: center; gap: 6px; }
+
+.add-product { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.add-product-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.add-product-row input {
+  flex: 1 1 200px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
+  font: inherit; color: var(--ink); background: #fff;
 }
 
 .tag {
@@ -198,25 +347,18 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
 /* ---------- candidates, and picking them ---------- */
 
 .roles-open { display: grid; gap: 3px; margin: 2px 0; }
-.role-head {
-  display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center;
-  width: 100%; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent;
-  text-align: left;
-}
-.role-head:hover { background: var(--soft); }
-.role-head[data-open="true"] { background: var(--soft); }
+.role { scroll-margin-top: 90px; }
 .role-name { color: var(--navy); font-weight: 650; font-size: 12px; }
 .role-name.excluded { color: #78859a; text-decoration: line-through; }
 .role-head .tag { margin-left: 0; }
-.role-count { color: var(--muted); font-size: 11px; }
 .chev { color: var(--teal); font-size: 11px; font-weight: 700; }
 
 .candidates { padding: 10px 8px 4px; border-top: 1px dashed var(--line); }
 .queries { margin: 0 0 8px; color: #40516a; font-size: 12px; }
 
 .candidate-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
-/* Two lines, because a scene card is only ~390px wide and the name is what the
-   operator reads — everything else can wrap under it. */
+/* Two lines, because the name is what the operator reads — the rank, the stock
+   and the action can wrap under it instead of squeezing the name to nothing. */
 .pick {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas: "check names above" ". meta meta";
@@ -235,12 +377,7 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
 .pick .meta { grid-area: meta; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .pick .rank { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .pick .sku { color: #5b6a80; font-size: 11px; font-family: ui-monospace, "Cascadia Mono", monospace; }
-.pick .channels { display: flex; gap: 3px; }
-.pick .channels em {
-  padding: 1px 6px; border-radius: 6px; background: white; border: 1px solid var(--line);
-  color: #5b6a80; font-size: 10px; font-style: normal; white-space: nowrap;
-}
-/* Shared by the candidate rows and the final list: the same badge in both, so a
+/* Shared by the candidate rows and the chosen list: the same badge in both, so a
    SKU read as shippable while picking still reads that way while reviewing. */
 .stock {
   padding: 1px 6px; border-radius: 6px; font-size: 10px;
@@ -281,13 +418,4 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
 
 /* ---------- what the operator finally took ---------- */
 
-.adoption { border-color: #cfe0e6; background: linear-gradient(180deg, #fff, #f4faf9); }
-.adopt-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
 .dedupe-toggle { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer; }
-.adopted { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.adopted li {
-  display: grid; grid-template-columns: 88px minmax(120px, 1fr) 1fr auto;
-  gap: 10px; align-items: baseline;
-  padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 12px;
-}
-.adopted li:last-child { border-bottom: 0; }

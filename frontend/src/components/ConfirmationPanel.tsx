@@ -39,7 +39,6 @@ export default function ConfirmationPanel({ storeId, status, busy, onStarted }: 
   return <section className="card" id="confirm-store-information" aria-label="确认店铺信息">
     <h2>确认店铺信息</h2>
     <p>请检查上方商品，取消不参与分析的商品，并核对下方销售信息。</p>
-    <p className="muted">没有销售数据也能继续。确认前不会生成经营分析、场景或匹配 SKU。</p>
     {review?.business_context && <BusinessEvidence context={review.business_context} />}
     {error && <p className="notice error" role="alert">{error}</p>}
     <button className="btn" disabled={busy || sending || !review?.version} onClick={confirm}>

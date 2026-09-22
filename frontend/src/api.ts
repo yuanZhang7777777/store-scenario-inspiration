@@ -6,13 +6,6 @@ export interface ReviewStatus {
 }
 export interface ReviewDetails extends ReviewStatus { business_context: BusinessContext | null }
 
-export interface BusinessMetrics {
-  ado: number | null;
-  adg: number | null;
-  currency: string | null;
-  period_start: string | null;
-  period_end: string | null;
-}
 export interface SalesRow {
   product_name: string;
   product_title: string | null;
@@ -29,7 +22,6 @@ export interface SalesRow {
 }
 export interface BusinessContext {
   schema: string;
-  store_metrics: BusinessMetrics;
   sales_rows: SalesRow[];
   warnings: string[];
   scope: string;
@@ -131,6 +123,10 @@ export interface StoreDetail {
   store: { store_name: string; country: string; images: Screenshot[] };
   stages: StageProgress;
   params: Params;
+  /** The steps that no longer describe this store, in run order. What the one
+   *  button works from, so the operator answers "what changed" by having
+   *  changed it rather than by knowing the pipeline. */
+  outdated: string[];
   kept_clues: string[];
   excluded_clues: string[];
   job: Job | null;
@@ -139,6 +135,9 @@ export interface StoreDetail {
 export interface ClueEntry {
   clue: string;
   excluded: boolean;
+  /** The screenshot's own wording, when the name above is its translation.
+   *  Absent on readings made before the pass was asked for a Chinese name. */
+  original?: string;
   role: string | null;
   confidence: number;
   evidence: string;
@@ -146,19 +145,29 @@ export interface ClueEntry {
   card_images: number;
   scenery_images: number;
   merged_from: string[];
+  /** Typed in by the operator, so no screenshot stands behind it. */
+  manual: boolean;
+}
+
+export interface CustomProduct {
+  name_cn: string;
+  name_en: string;
 }
 
 /**
- * Every product recognition saw, with the operator's exclusions applied.
+ * Every product recognition saw, plus the ones the operator typed in, with the
+ * exclusions applied.
  *
  * Recognition tags nearly everything as a product card at the same confidence,
  * so no threshold here separates the store's direction from an item that merely
- * happened to be photographed. The only lever is what the operator excludes.
+ * happened to be photographed. The only levers are what the operator rules out
+ * and what they add by hand.
  */
 export interface Clues {
   counts: { kept: number; excluded: number };
   entries: ClueEntry[];
   excluded: string[];
+  custom: CustomProduct[];
 }
 
 export interface ProductNeed {
@@ -337,11 +346,10 @@ export const api = {
 
   store: (id: string) => call<StoreDetail>(`/stores/${id}`),
 
-  createStore: (storeName: string, country: string, files: File[], metrics?: BusinessMetrics) => {
+  createStore: (storeName: string, country: string, files: File[]) => {
     const body = new FormData();
     body.append("store_name", storeName);
     body.append("country", country);
-    if (metrics) body.append("business_metrics", JSON.stringify(metrics));
     files.forEach((file) => body.append("files", file));
     return call<StoreSummary>("/stores", { method: "POST", body });
   },
@@ -367,6 +375,9 @@ export const api = {
 
   setExcluded: (id: string, excluded: string[]) => send<Clues>(`/stores/${id}/clues`, { excluded }),
 
+  setProducts: (id: string, products: CustomProduct[]) =>
+    send<Clues>(`/stores/${id}/products`, { products }),
+
   paramSchema: () => call<ParamSchema>("/params/schema"),
 
   params: (id: string) => call<Params>(`/stores/${id}/params`),
@@ -382,4 +393,18 @@ export const api = {
 
   imageUrl: (id: string, filename: string) =>
     `${BASE}/stores/${id}/images/${encodeURIComponent(filename)}`,
+
+  addImages: (id: string, files: File[]) => {
+    const body = new FormData();
+    files.forEach((file) => body.append("files", file));
+    return call<{ added: string[]; store: StoreDetail }>(`/stores/${id}/images`, {
+      method: "POST",
+      body,
+    });
+  },
+
+  removeImage: (id: string, filename: string) =>
+    call<StoreDetail>(`/stores/${id}/images/${encodeURIComponent(filename)}`, {
+      method: "DELETE",
+    }),
 };

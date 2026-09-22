@@ -2,22 +2,21 @@ import { useEffect, useState } from "react";
 import { api, type ParamField, type Params } from "../api";
 
 const TITLES: Record<keyof Params, string> = {
-  scene_count: "场景数量", products_per_scene: "每个场景的商品数量", expansion_terms: "扩写词数量",
-  recall_limit: "每项商品的候选数量", stock_filter: "库存范围", rerank: "无关候选处理",
-  rerank_provider: "相关性复核", rerank_cutoff: "排除阈值", temperature: "生成随机性",
+  scene_count: "场景数量", products_per_scene: "每个场景的商品数量", expansion_terms: "补充搜索词数量",
+  recall_limit: "每个商品留几个可选", stock_filter: "要不要只看有货的", rerank: "复核出的无关商品怎么处理",
+  rerank_provider: "谁来帮你复核", rerank_cutoff: "多确定才排除", temperature: "文字的发挥程度",
 };
 const OPTIONS: Record<string, string> = {
-  all: "保留全部，标注库存", in_stock: "仅目标国家有货", mark_only: "保留并标记", drop: "排除明确无关项",
-  jev: "Jev", deepseek: "DeepSeek", off: "不启用",
+  all: "都留着，标出有没有货", in_stock: "只看有货的", mark_only: "留着，标一下", drop: "把明确无关的去掉",
+  jev: "Jev", deepseek: "DeepSeek", off: "不复核",
 };
 const HINTS: Partial<Record<keyof Params, string>> = {
-  rerank_cutoff: "数值越高，自动排除越谨慎。", temperature: "通常无需调整。",
+  rerank_cutoff: "数越大越谨慎，越不容易被排除。", temperature: "通常无需调整。",
   stock_filter: "库存未知不等于无货。", products_per_scene: "保留现有默认设置即可。",
 };
 interface Props {
   storeId: string; params: Params; onSaved: (params: Params) => void;
-  onRun: (stages: string[], params: Params) => Promise<boolean>;
-  busy: boolean; canRerunLocally: boolean;
+  busy: boolean;
   /** Before the operator confirms the store, the knobs can still be saved —
    *  they are read from disk when the run starts, so saving first works. */
   confirmed: boolean;
@@ -27,7 +26,7 @@ interface Props {
   onDraft: (params: Params) => void;
 }
 
-export default function ParamsPanel({ storeId, params, onSaved, onRun, busy, canRerunLocally, confirmed, onDraft }: Props) {
+export default function ParamsPanel({ storeId, params, onSaved, busy, confirmed, onDraft }: Props) {
   const [fields, setFields] = useState<ParamField[]>([]);
   const [draft, setDraft] = useState<Params>(params);
   const [note, setNote] = useState("");
@@ -49,26 +48,22 @@ export default function ParamsPanel({ storeId, params, onSaved, onRun, busy, can
       (field.maximum != null && Number(draft[field.name]) > field.maximum) ||
       (field.step === 1 && !Number.isInteger(draft[field.name]))));
     if (invalid) { setNote(`请检查“${TITLES[invalid.name]}”的取值范围。`); return; }
+    // Saving is the whole job here. Which steps a change undoes is a fact about
+    // the store, not about this form, so the page works it out from what the
+    // last run recorded and shows exactly one button for it. A form that also
+    // decided the stages would be a second opinion that can drift from the first.
     setApplying(true); setNote("");
     try {
-      if (!confirmed) {
-        onSaved(await api.setParams(storeId, draft));
-        setNote("设置已保存，确认店铺信息后按这套设置开始分析。");
-        return;
-      }
-      const full = ["clues", "scenes", "products", "synthesis", "expand", "retrieval", "rerank"];
-      const needsAnalysis = changed.some((f) => ["scene_count", "products_per_scene", "expansion_terms", "temperature"].includes(f.name));
-      const needsRetrieval = changed.some((f) => ["recall_limit", "stock_filter"].includes(f.name));
-      const stages = needsAnalysis || !canRerunLocally ? full : needsRetrieval ? ["retrieval", "rerank"] : ["rerank"];
-      if (await onRun(stages, draft)) { onSaved(draft); setNote("设置已应用，正在更新受影响的结果。"); }
-      else setNote("更新未启动，修改尚未应用。请检查页面提示。");
+      onSaved(await api.setParams(storeId, draft));
+      setNote(confirmed
+        ? "设置已保存。不花钱的部分会自动重算；要重新调用模型的，按页面上的按钮开始。"
+        : "设置已保存，确认店铺信息后按这套设置开始分析。");
     } catch { setNote("未能保存设置，请稍后重试。"); }
     finally { setApplying(false); }
   }
   return (
-    <details className="card advanced-settings" open={!confirmed}>
+    <details className="card advanced-settings">
       <summary>高级设置 <span className="muted">通常无需调整</span></summary>
-      <p className="muted">保留现有检索默认值。修改后，由系统更新相关步骤。</p>
       <div className="business-fields">{fields.map((field) => {
         const disabled = busy || applying || (field.name === "rerank_cutoff" && (draft.rerank !== "drop" || draft.rerank_provider === "off"));
         return <label className="field" key={field.name}><span>{TITLES[field.name]}</span>
@@ -77,7 +72,7 @@ export default function ParamsPanel({ storeId, params, onSaved, onRun, busy, can
           <small className="muted">{HINTS[field.name] || (field.options ? "" : `${field.minimum}–${field.maximum}`)}</small>
         </label>;
       })}</div>
-      <div className="form-actions"><button className="btn small" disabled={busy || applying || !changed.length} onClick={apply}>{confirmed ? "应用并更新" : "保存设置"}</button><button className="btn ghost small" disabled={busy || applying || !changed.length} onClick={() => { setDraft(params); setNote(""); }}>撤销修改</button><span role="status" className="muted">{note}</span></div>
+      <div className="form-actions"><button className="btn small" disabled={busy || applying || !changed.length} onClick={apply}>保存设置</button><button className="btn ghost small" disabled={busy || applying || !changed.length} onClick={() => { setDraft(params); setNote(""); }}>撤销修改</button><span role="status" className="muted">{note}</span></div>
     </details>
   );
 }
