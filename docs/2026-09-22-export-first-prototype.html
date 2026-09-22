@@ -1,0 +1,523 @@
+<meta charset="utf-8">
+<style>
+#metis-export-study{--mx-bg:light-dark(#f3f7fb,#121a23);--mx-panel:light-dark(#fff,#1a222d);--mx-text:light-dark(#0f2230,#e4eef7);--mx-muted:light-dark(#5b6f7c,#a3b8c6);--mx-line:light-dark(#dbe6ed,#2c3c48);--mx-soft:light-dark(#e9f1f8,#212f3a);--mx-accent:#0a8fd4;--mx-accent-lift:#4fb9ec;--mx-accent-ink:#0a6396;--mx-accent-deep:#03253d;--mx-accent-soft:#81c8e8;--mx-radius:16px;color:var(--mx-text);font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;background:var(--mx-bg);border:1px solid var(--mx-line);border-radius:20px;overflow:hidden;text-align:left;isolation:isolate}
+#metis-export-study *{box-sizing:border-box}
+#metis-export-study [hidden]{display:none!important}
+#metis-export-study h1,#metis-export-study h2,#metis-export-study h3,#metis-export-study p{margin:0}
+#metis-export-study button,#metis-export-study input,#metis-export-study select,#metis-export-study textarea{font:inherit}
+#metis-export-study button{color:inherit}
+#metis-export-study button:disabled{opacity:.45;cursor:not-allowed}
+#metis-export-study button:focus-visible,#metis-export-study input:focus-visible,#metis-export-study textarea:focus-visible,#metis-export-study select:focus-visible,#metis-export-study summary:focus-visible{outline:3px solid #0a8fd4;outline-offset:3px}
+#metis-export-study button{cursor:var(--cursor-interaction,pointer)}
+#metis-export-study .mx-top{display:flex;align-items:center;gap:16px;padding:19px 26px;background:var(--mx-panel);border-top:3px solid var(--mx-accent);border-bottom:1px solid var(--mx-line)}
+#metis-export-study .mx-brand{font:24px Georgia,serif;letter-spacing:.13em;display:flex;align-items:center;gap:10px;white-space:nowrap}
+#metis-export-study .mx-brand svg{color:var(--mx-accent);width:24px;height:24px}
+#metis-export-study .mx-brand-sub{border-left:1px solid var(--mx-line);padding-left:16px;color:var(--mx-muted);font-size:13px}
+#metis-export-study .mx-sample{margin-left:auto;padding:4px 9px;border-radius:6px;background:var(--mx-soft);color:var(--mx-muted);font-size:12px;white-space:nowrap}
+#metis-export-study .mx-nav{display:flex;gap:6px;padding:11px 26px;border-bottom:1px solid var(--mx-line);background:var(--mx-panel)}
+#metis-export-study .mx-nav button{background:transparent;border:0;border-radius:99px;padding:7px 16px;color:var(--mx-muted);font-size:13px}
+#metis-export-study .mx-nav button[aria-pressed=true]{background:var(--mx-soft);color:var(--mx-accent-ink);font-weight:500}
+#metis-export-study .mx-page{padding:26px}
+#metis-export-study .mx-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px}
+#metis-export-study .mx-heading h1{font-size:25px;font-weight:600;letter-spacing:-.03em;line-height:1.4}
+#metis-export-study .mx-heading p{margin-top:6px;color:var(--mx-muted);font-size:13px}
+#metis-export-study .mx-ready{font-size:13px;color:light-dark(#277252,#83d5b0);display:flex;align-items:center;gap:7px;white-space:nowrap}
+#metis-export-study .mx-ready i{display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor}
+/* The store list is the entry point: it has to answer "did this shop finish?" at a glance. */
+#metis-export-study .mx-store-list{display:grid;gap:12px}
+#metis-export-study .mx-store{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:17px 20px;background:var(--mx-panel);border:1px solid var(--mx-line);border-radius:var(--mx-radius)}
+#metis-export-study .mx-store-name{display:flex;align-items:center;gap:9px;font-size:16px;font-weight:600;flex-wrap:wrap}
+#metis-export-study .mx-store-flag{font-size:12px;font-weight:400;color:var(--mx-muted);border:1px solid var(--mx-line);border-radius:99px;padding:1px 8px}
+#metis-export-study .mx-store-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--mx-muted)}
+#metis-export-study .mx-store-status{display:inline-flex;align-items:center;gap:7px;font-weight:500}
+#metis-export-study .mx-store-status.is-live{color:var(--mx-accent-ink)}
+#metis-export-study .mx-store-status.is-done{color:light-dark(#277252,#83d5b0)}
+#metis-export-study .mx-store-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+#metis-export-study .mx-store-status.is-live .mx-store-dot{animation:mx-breathe 1.6s ease-in-out infinite}
+@keyframes mx-breathe{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
+#metis-export-study .mx-store-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}
+#metis-export-study .mx-store-actions .mx-button{padding:8px 15px;min-height:38px;font-size:13px}
+#metis-export-study .mx-store-steps{display:inline-flex;gap:4px;margin-right:5px}
+#metis-export-study .mx-store-steps i{width:22px;height:4px;border-radius:2px;background:var(--mx-line)}
+#metis-export-study .mx-store-steps i[data-on=true]{background:var(--mx-accent)}
+#metis-export-study .mx-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:20px;align-items:start}
+#metis-export-study .mx-panel{background:var(--mx-panel);border:1px solid var(--mx-line);border-radius:var(--mx-radius);overflow:hidden}
+#metis-export-study .mx-panel-top{padding:18px 20px;border-bottom:1px solid var(--mx-line);display:flex;justify-content:space-between;align-items:center;gap:10px}
+#metis-export-study .mx-panel-top h2{font-size:16px;font-weight:600}
+#metis-export-study .mx-switches{display:flex;flex-wrap:wrap;gap:18px;padding:0 20px;border-bottom:1px solid var(--mx-line)}
+#metis-export-study .mx-switches button{background:none;border:0;border-bottom:2px solid transparent;padding:14px 0;color:var(--mx-muted);font-size:14px}
+#metis-export-study .mx-switches button[aria-pressed=true]{border-bottom-color:var(--mx-accent);color:var(--mx-text)}
+/* Two bands, so "which scene" and "which SKUs it recalled" never read as one list. */
+#metis-export-study .mx-band-scene{background:color-mix(in srgb,var(--mx-accent) 14%,var(--mx-panel));padding:16px 20px 18px;border-bottom:2px solid color-mix(in srgb,var(--mx-accent) 30%,var(--mx-line))}
+#metis-export-study .mx-band-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+#metis-export-study .mx-band-head h3{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
+#metis-export-study .mx-band-head h3::before{content:'';width:3px;height:13px;border-radius:2px;background:var(--mx-accent-ink)}
+#metis-export-study .mx-band-head span{color:var(--mx-muted);font-size:12px}
+#metis-export-study .mx-band-recall .mx-band-head{padding:16px 20px 0;margin-bottom:10px}
+#metis-export-study .mx-scene-nav{display:flex;gap:8px;flex-wrap:wrap}
+#metis-export-study .mx-scene-nav button{border:1px solid color-mix(in srgb,var(--mx-accent),transparent 55%);border-radius:10px;padding:8px 13px;background:var(--mx-panel);color:var(--mx-muted);display:grid;gap:3px;text-align:left;font-size:11px}
+#metis-export-study .mx-scene-nav button b{color:var(--mx-text);font-weight:500;font-size:13px}
+#metis-export-study .mx-scene-nav button[aria-pressed=true]{background:linear-gradient(150deg,var(--mx-accent-lift),var(--mx-accent));border-color:var(--mx-accent);color:var(--mx-accent-deep);box-shadow:0 5px 13px color-mix(in srgb,var(--mx-accent),transparent 62%)}
+#metis-export-study .mx-scene-nav button[aria-pressed=true] b{color:var(--mx-accent-deep)}
+#metis-export-study .mx-legend{display:flex;gap:7px;flex-wrap:wrap;padding:0 20px 8px}
+#metis-export-study .mx-chip{font-size:11px;line-height:1.6;border-radius:99px;padding:1px 7px;border:1px solid var(--mx-line);color:var(--mx-muted);white-space:nowrap}
+#metis-export-study .mx-chip-ok{border-color:color-mix(in srgb,var(--mx-accent-ink),transparent 55%);color:var(--mx-accent-ink)}
+#metis-export-study .mx-chip-no{border-color:color-mix(in srgb,light-dark(#b23f3b,#e79a96),transparent 55%);color:light-dark(#b23f3b,#e79a96)}
+#metis-export-study .mx-chip-unknown{border-style:dashed}
+#metis-export-study .mx-preview-note{font-size:12px;color:var(--mx-muted)}
+#metis-export-study .mx-table{border-collapse:collapse;width:100%;font-size:15px}
+#metis-export-study .mx-table th{color:var(--mx-muted);font-size:12px;font-weight:500;text-align:left;padding:9px 16px;border-top:1px solid var(--mx-line)}
+#metis-export-study .mx-table td{padding:14px 16px;border-bottom:1px solid var(--mx-line);vertical-align:middle}
+#metis-export-study .mx-table tr:last-child td{border:0}
+#metis-export-study .mx-table td:last-child,#metis-export-study .mx-table th:last-child{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+#metis-export-study .mx-name{display:block}
+#metis-export-study .mx-meta{display:flex;align-items:center;gap:7px;color:var(--mx-muted);margin-top:5px;font-size:11px}
+#metis-export-study .mx-dim{color:var(--mx-muted)}
+#metis-export-study .mx-sku{font:12px ui-monospace,Consolas,monospace;color:var(--mx-muted)}
+#metis-export-study .mx-empty{padding:34px 20px;text-align:center;color:var(--mx-muted)}
+#metis-export-study .mx-preview-footer{border-top:1px solid var(--mx-line);padding:12px 20px;display:flex;gap:8px;align-items:center;color:var(--mx-muted);font-size:12px}
+#metis-export-study .mx-preview-footer svg{width:15px;height:15px;flex-shrink:0}
+#metis-export-study .mx-export{padding:20px;background:linear-gradient(155deg,var(--mx-panel) 65%,var(--mx-soft));box-shadow:0 14px 35px -25px #0d2f4a70}
+#metis-export-study .mx-file{display:flex;align-items:center;gap:12px;padding-bottom:18px;border-bottom:1px solid var(--mx-line)}
+#metis-export-study .mx-file-icon{display:grid;place-items:center;width:44px;height:52px;background:var(--mx-soft);border:1px solid var(--mx-line);border-radius:8px;color:var(--mx-accent-ink)}
+#metis-export-study .mx-file strong{font-size:14px;font-weight:600;display:block}
+#metis-export-study .mx-file small{display:block;font-size:11px;color:var(--mx-muted);margin-top:3px}
+#metis-export-study .mx-export fieldset{border:0;padding:0;margin:20px 0}
+#metis-export-study .mx-export legend{font-size:12px;color:var(--mx-muted);margin-bottom:9px}
+#metis-export-study .mx-radio{display:flex;align-items:center;gap:8px;padding:9px 0;font-size:14px}
+#metis-export-study .mx-radio input{accent-color:var(--mx-accent);width:15px;height:15px;margin:0}
+#metis-export-study .mx-count{font-size:13px;color:var(--mx-muted);padding:0 0 16px}
+#metis-export-study .mx-count strong{color:var(--mx-text);font-weight:600}
+#metis-export-study .mx-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 18px;min-height:42px;border:1px solid var(--mx-line);border-radius:99px;background:var(--mx-panel);text-decoration:none;transition:transform .18s,box-shadow .18s;font-size:14px;font-weight:500}
+#metis-export-study .mx-button:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 5px 12px #0d244014}
+#metis-export-study .mx-button:active:not(:disabled){transform:translateY(1px)}
+#metis-export-study .mx-button.mx-primary{background:linear-gradient(150deg,var(--mx-accent-lift),var(--mx-accent));color:var(--mx-accent-deep);font-weight:600;border-color:color-mix(in srgb,var(--mx-accent),#fff 22%);box-shadow:0 2px 3px #04203d1f,0 10px 24px color-mix(in srgb,var(--mx-accent),transparent 52%),inset 0 1px 0 #ffffff73}
+#metis-export-study .mx-export .mx-button{width:100%;margin-bottom:9px}
+#metis-export-study .mx-button svg{width:16px;height:16px}
+#metis-export-study .mx-contents{margin-top:17px;font-size:12px;color:var(--mx-muted);line-height:1.9;border-top:1px solid var(--mx-line);padding-top:14px}
+#metis-export-study .mx-contents strong{color:var(--mx-text);font-weight:500}
+#metis-export-study .mx-analysis{padding:24px}
+#metis-export-study .mx-analysis h3{font-size:16px;font-weight:600;margin-bottom:8px}
+#metis-export-study .mx-analysis p{color:var(--mx-muted);font-size:15px;line-height:1.9;margin-bottom:24px}
+#metis-export-study .mx-analysis p:last-child{margin-bottom:0}
+#metis-export-study .mx-custom{padding:16px 20px}
+#metis-export-study .mx-custom details{border-bottom:1px solid var(--mx-line);padding:10px 0}
+#metis-export-study .mx-custom summary{font-size:14px;cursor:var(--cursor-interaction,pointer)}
+#metis-export-study .mx-custom label{display:flex;align-items:center;gap:8px;font-size:13px;padding:10px 0}
+#metis-export-study .mx-custom label input{accent-color:var(--mx-accent)}
+#metis-export-study .mx-text-button{border:0;background:transparent;color:var(--mx-accent-ink);font-size:12px;padding:5px 0}
+#metis-export-study .mx-input-panel{max-width:700px;margin:auto;padding:26px}
+#metis-export-study .mx-fields{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
+#metis-export-study .mx-fields label{display:grid;gap:7px;font-size:13px}
+#metis-export-study .mx-fields input,#metis-export-study .mx-fields select,#metis-export-study textarea{background:var(--mx-panel);color:var(--mx-text);border:1px solid var(--mx-line);border-radius:9px;padding:10px 12px;width:100%;font-size:15px}
+#metis-export-study .mx-drop{padding:30px 20px;text-align:center;border:1px dashed color-mix(in srgb,var(--mx-muted),transparent 50%);background:var(--mx-soft);border-radius:12px;margin-bottom:18px}
+#metis-export-study .mx-drop>svg{display:block;margin:0 auto 12px;color:var(--mx-accent-ink);width:28px;height:28px}
+#metis-export-study .mx-drop p{color:var(--mx-muted);font-size:13px;margin-top:7px}
+#metis-export-study .mx-label{display:block;margin-bottom:8px;font-size:13px}
+#metis-export-study textarea{resize:vertical;min-height:70px}
+#metis-export-study .mx-input-actions{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:20px;flex-wrap:wrap}
+#metis-export-study .mx-input-actions small{color:var(--mx-muted);font-size:12px}
+#metis-export-study .mx-input-hint{margin-top:16px;font-size:12px;color:var(--mx-muted)}
+#metis-export-study .mx-demo{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:9px 26px;background:var(--mx-panel);border-bottom:1px solid var(--mx-line);font-size:12px;color:var(--mx-muted)}
+#metis-export-study .mx-demo span{margin-right:auto}
+#metis-export-study .mx-demo button{border:0;background:transparent;font-size:12px;padding:7px 0;min-height:32px}
+#metis-export-study .mx-page{background:radial-gradient(ellipse at 85% 0%,light-dark(#e2eef8,#0f1e2c),transparent 65%)}
+#metis-export-study .mx-heading h1{font-family:Georgia,'Microsoft YaHei',serif;font-size:28px;letter-spacing:.02em}
+#metis-export-study .mx-monogram{width:24px;height:25px;display:inline-block;position:relative;transform:rotate(-8deg)}
+#metis-export-study .mx-monogram::before,#metis-export-study .mx-monogram::after{content:'';position:absolute;width:11px;height:24px;border-radius:6px 6px 2px 2px;background:linear-gradient(160deg,#b9dcf8,#0a8fd4);transform:skewY(-22deg);left:0;top:0}
+#metis-export-study .mx-monogram::after{left:13px;top:3px;background:linear-gradient(160deg,#7ac9ee,#045a86)}
+/* Original METIS paper-and-glass glyphs: no icon library or remote assets. */
+#metis-export-study .mx-glyph{display:inline-block;position:relative;width:76px;height:76px;flex:none;filter:drop-shadow(0 9px 7px #041f2b25)}
+#metis-export-study .mx-glyph span{position:absolute;display:block;border:1px solid #e2f2fb9c;box-shadow:inset 0 1px 1px #fff9,0 5px 12px #041a2426}
+#metis-export-study .mx-glyph span:nth-child(1){background:linear-gradient(135deg,#b6e4f5d9,#2f7bb0d9)}
+#metis-export-study .mx-glyph span:nth-child(2){background:linear-gradient(135deg,#e6f7ffed,#9fd8f0dc)}
+#metis-export-study .mx-glyph span:nth-child(3){background:linear-gradient(135deg,#f5fcff,#c2e4f5)}
+#metis-export-study .mx-glyph.mx-report span{width:37px;height:48px;left:20px;top:14px;border-radius:5px;transform:rotate(-17deg) translate(-7px,-2px)}
+#metis-export-study .mx-glyph.mx-report span:nth-child(2){transform:rotate(12deg) translate(7px,-1px)}
+#metis-export-study .mx-glyph.mx-report span:nth-child(3){transform:rotate(-3deg) translate(2px,7px)}
+#metis-export-study .mx-glyph.mx-report span:nth-child(3)::before{content:'';position:absolute;left:8px;top:10px;width:18px;height:3px;background:#0a7bb0;box-shadow:0 7px #8fc4e0,0 14px #b3dcf0}
+#metis-export-study .mx-glyph.mx-scene span{width:43px;height:34px;left:16px;top:22px;border-radius:6px;transform:translate(-10px,-12px) rotate(-14deg)}
+#metis-export-study .mx-glyph.mx-scene span:nth-child(2){transform:translate(10px,-3px) rotate(13deg)}
+#metis-export-study .mx-glyph.mx-scene span:nth-child(3){transform:translate(-1px,11px) rotate(-5deg);overflow:hidden}
+#metis-export-study .mx-glyph.mx-scene span:nth-child(3)::before{content:'';position:absolute;inset:9px 0 0;background:linear-gradient(135deg,#7fc4e8,#1272a8);clip-path:polygon(0 100%,0 80%,35% 13%,57% 63%,75% 30%,100% 77%,100% 100%)}
+#metis-export-study .mx-glyph.mx-scene span:nth-child(3)::after{content:'';position:absolute;width:7px;height:7px;right:8px;top:6px;border-radius:50%;background:#dbb779}
+#metis-export-study .mx-glyph.mx-product span{width:29px;height:30px;left:24px;top:8px;border-radius:5px;transform:rotate(-24deg) skew(7deg,7deg)}
+#metis-export-study .mx-glyph.mx-product span:nth-child(2){left:8px;top:34px}
+#metis-export-study .mx-glyph.mx-product span:nth-child(3){left:42px;top:31px}
+#metis-export-study .mx-glyph.mx-product span::before{content:'';position:absolute;top:1px;bottom:1px;left:12px;width:3px;background:#0a8fd43b}
+#metis-export-study .mx-glyph.mx-recall span{inset:8px;border:1px solid #9fd8f5;border-radius:50%;background:none;box-shadow:none;transform:rotate(-35deg) scaleY(.52)}
+#metis-export-study .mx-glyph.mx-recall span:nth-child(2){transform:rotate(45deg) scaleY(.52)}
+#metis-export-study .mx-glyph.mx-recall span:nth-child(3){inset:25px;transform:none;background:radial-gradient(circle at 32% 25%,#f2fbff,#9fdcff 44%,#0a8fd4);box-shadow:0 0 16px #8fcdf766}
+#metis-export-study .mx-glyph.mx-recall::after{content:'';position:absolute;left:9px;top:17px;width:7px;height:7px;border-radius:50%;background:#e6f2ff;box-shadow:45px 27px #9fc8e0}
+#metis-export-study .mx-glyph.mx-file span{width:37px;height:48px;left:18px;top:12px;border-radius:5px;transform:rotate(-10deg)}
+#metis-export-study .mx-glyph.mx-file span:nth-child(2){transform:rotate(6deg) translate(7px,5px);background:linear-gradient(135deg,#e8f7ff,#b8dcee)}
+#metis-export-study .mx-glyph.mx-file span:nth-child(3){width:21px;height:22px;left:32px;top:28px;border-radius:0;transform:rotate(6deg);border:0;background:repeating-linear-gradient(0deg,transparent 0 6px,#1f7aa8 6px 7px),repeating-linear-gradient(90deg,transparent 0 9px,#1f7aa8 9px 10px);box-shadow:none}
+#metis-export-study .mx-drop .mx-glyph{display:block;margin:0 auto 14px}
+#metis-export-study .mx-file-icon{background:none;border:0;width:50px;height:58px}
+#metis-export-study .mx-file-icon .mx-glyph{transform:scale(.78)}
+#metis-export-study .mx-journey{position:relative;isolation:isolate;border-radius:var(--mx-radius);background:#04223c;color:#e6eef7;overflow:hidden;box-shadow:0 18px 36px -28px #0623399e}
+#metis-export-study .mx-atmosphere{position:absolute;inset:0;z-index:-1;overflow:hidden;background:radial-gradient(ellipse at 50% 150%,#0f4a7a,transparent 75%),#04223c;pointer-events:none}
+#metis-export-study .mx-light{position:absolute;width:58%;height:100%;left:-15%;top:-40%;border-radius:50%;background:radial-gradient(ellipse,#0a8fd4a6,transparent 68%);will-change:transform}
+#metis-export-study .mx-light:nth-child(2){left:58%;top:30%;background:radial-gradient(ellipse,#4fc0f087,transparent 68%)}
+#metis-export-study .mx-atmosphere::after{content:'';position:absolute;inset:0;opacity:.5;background-image:radial-gradient(#8fd4f766 .7px,transparent .7px);background-size:23px 23px;mask-image:linear-gradient(0deg,transparent,#000)}
+#metis-export-study .mx-journey-top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:20px 24px 0;transition:padding .8s}
+#metis-export-study .mx-journey-top strong{font-size:14px;font-weight:500;display:flex;align-items:center;gap:9px}
+#metis-export-study .mx-live-dot{width:6px;height:6px;border-radius:50%;background:#4fc4f5;box-shadow:0 0 13px #7fdcffcc;flex:none}
+#metis-export-study .mx-journey-top small{font:11px ui-monospace,Consolas,monospace;letter-spacing:.15em;color:#a6c6dd}
+#metis-export-study .mx-chain{position:relative;display:flex;gap:12px;padding:25px 24px 22px;align-items:stretch;min-width:0}
+#metis-export-study .mx-chain::before{content:'';position:absolute;left:8%;right:8%;height:1px;top:50%;background:linear-gradient(90deg,#0a8fd4,#7fc4f740)}
+#metis-export-study .mx-stage{position:relative;flex:1 1 0;min-width:0;height:257px;border-radius:13px;background:#0a2a45ad;transition:flex-grow .9s cubic-bezier(.22,.8,.2,1),height .9s cubic-bezier(.22,.8,.2,1),background .7s;overflow:hidden}
+#metis-export-study .mx-stage[data-status=active]{flex-grow:4.6;background:linear-gradient(125deg,#0a8fd45c,#0a63962e);box-shadow:inset 0 1px #b9dcff4d,0 7px 28px #041e2e26}
+#metis-export-study .mx-stage[data-status=done]{flex-grow:.9;background:#0a2c44a6}
+#metis-export-study .mx-stage-head{position:relative;z-index:2;display:flex;align-items:center;gap:8px;padding:13px 12px;font-size:12px;white-space:nowrap}
+#metis-export-study .mx-stage-head em{font:11px ui-monospace,Consolas,monospace;color:#8fbede;font-style:normal}
+#metis-export-study .mx-stage-head b{font-weight:500}
+#metis-export-study .mx-stage-status{display:block;position:absolute;bottom:16px;left:0;right:0;text-align:center;font-size:11px;color:#9cbede}
+#metis-export-study .mx-stage[data-status=active] .mx-stage-status{color:#d6ecff}
+#metis-export-study .mx-stage .mx-glyph{position:absolute;left:50%;top:78px;margin-left:-38px;transition:top .9s,scale .9s;scale:.85}
+#metis-export-study .mx-stage[data-status=active] .mx-glyph{scale:1.12}
+#metis-export-study .mx-stage[data-status=pending] .mx-glyph{opacity:.45}
+#metis-export-study .mx-wait-copy{position:absolute;bottom:44px;left:0;right:0;text-align:center;font-size:12px;color:#c6e4fa}
+#metis-export-study .mx-stage:not([data-status=active]) .mx-wait-copy{display:none}
+#metis-export-study .mx-flow{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#metis-export-study .mx-flow-track{fill:none;stroke:#7fc4f740;stroke-width:1}
+#metis-export-study .mx-flow-tail{fill:none;stroke:#9de4ff;stroke-width:2;stroke-linecap:round;filter:drop-shadow(0 0 4px #3cb8f0b8)}
+#metis-export-study .mx-seed{position:absolute;left:12px;font-size:11px;color:#d4e9fa;border-radius:6px;padding:4px 7px;background:#1444638f;top:68px;transition:opacity .4s}
+#metis-export-study .mx-seed:nth-of-type(2){top:111px;left:16px}
+#metis-export-study .mx-seed:nth-of-type(3){top:154px}
+#metis-export-study .mx-stage:not([data-status=active]) .mx-seed{opacity:0}
+#metis-export-study .mx-chain-note{padding:0 24px 20px;color:#c2dff0;font-size:12px;max-height:50px;opacity:1;transition:padding .8s,max-height .8s,opacity .4s}
+#metis-export-study .mx-journey[data-compact=true] .mx-stage{height:90px}
+#metis-export-study .mx-journey[data-compact=true] .mx-stage[data-status=active]{flex-grow:2}
+#metis-export-study .mx-journey[data-compact=true] .mx-stage-head{padding:9px 10px;font-size:12px;gap:6px}
+#metis-export-study .mx-journey[data-compact=true] .mx-stage .mx-glyph{top:10px;scale:.47}
+#metis-export-study .mx-journey[data-compact=true] .mx-stage[data-status=active] .mx-glyph{scale:.6}
+#metis-export-study .mx-journey[data-compact=true] .mx-stage-status{bottom:6px;font-size:11px}
+#metis-export-study .mx-journey[data-compact=true] .mx-wait-copy,#metis-export-study .mx-journey[data-compact=true] .mx-seed{display:none}
+#metis-export-study .mx-journey[data-compact=true] .mx-chain{padding:12px 16px 16px;gap:8px}
+#metis-export-study .mx-journey[data-compact=true] .mx-journey-top{padding:13px 18px 0}
+#metis-export-study .mx-journey[data-compact=true] .mx-chain-note{max-height:0;padding-top:0;padding-bottom:0;opacity:0}
+#metis-export-study .mx-work-area{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .9s cubic-bezier(.22,.8,.2,1),opacity .7s,margin .9s}
+#metis-export-study .mx-work-area[data-ready=true]{grid-template-rows:1fr;opacity:1;margin-top:22px}
+#metis-export-study .mx-work-inner{overflow:hidden;min-height:0}
+#metis-export-study .mx-report-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:15px 20px 0}
+#metis-export-study .mx-report-tabs button{border:0;background:transparent;border-radius:99px;padding:6px 10px;font-size:12px;color:var(--mx-muted);min-height:34px}
+#metis-export-study .mx-report-tabs button[aria-pressed=true]{background:var(--mx-soft);color:var(--mx-text)}
+#metis-export-study .mx-report-body{padding:28px}
+#metis-export-study .mx-eyebrow{font:11px ui-monospace,Consolas,monospace;color:var(--mx-muted);letter-spacing:.1em;margin-bottom:14px}
+#metis-export-study .mx-report-body h3{font:500 25px/1.6 Georgia,'Microsoft YaHei',serif;letter-spacing:-.03em;margin-bottom:18px;max-width:22em}
+#metis-export-study .mx-report-body p{font-size:15px;line-height:1.9;color:var(--mx-muted);margin:0 0 20px}
+#metis-export-study .mx-report-body strong{font-weight:500;color:var(--mx-text)}
+#metis-export-study .mx-report-divider{height:1px;background:var(--mx-line);margin:26px 0}
+#metis-export-study .mx-report-body h4{font-size:13px;letter-spacing:.04em;font-weight:500;margin:0 0 12px}
+#metis-export-study .mx-report-rows{display:grid;grid-template-columns:100px minmax(0,1fr);gap:13px 20px;font-size:14px;line-height:1.8}
+#metis-export-study .mx-report-rows dt{color:var(--mx-muted)}
+#metis-export-study .mx-report-rows dd{margin:0}
+#metis-export-study .mx-report-footer{font-size:12px;color:var(--mx-muted);border-top:1px solid var(--mx-line);padding:14px 24px;display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap}
+#metis-export-study .mx-export-status{font-size:12px;line-height:1.8;color:var(--mx-muted);padding:14px 0 0}
+#metis-export-study .mx-export-status strong{font-weight:500;color:var(--mx-text)}
+#metis-export-study .mx-toast{padding:12px 26px;background:var(--mx-soft);border-top:1px solid var(--mx-line);color:var(--mx-muted);font-size:12px;min-height:45px}
+@media(prefers-reduced-motion:reduce){#metis-export-study *,#metis-export-study *::before,#metis-export-study *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}#metis-export-study .mx-flow-tail{display:none}}
+@media(max-width:760px){#metis-export-study .mx-layout{grid-template-columns:1fr}#metis-export-study .mx-store{grid-template-columns:1fr;gap:14px}#metis-export-study .mx-store-actions{justify-content:flex-start}#metis-export-study .mx-store-steps{display:none}#metis-export-study .mx-nav{padding:9px 16px}#metis-export-study .mx-export{order:-1}#metis-export-study .mx-export fieldset{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}#metis-export-study .mx-export .mx-button{width:auto;margin-right:8px}#metis-export-study .mx-contents{display:none}#metis-export-study .mx-top{padding:16px}#metis-export-study .mx-page{padding:18px}#metis-export-study .mx-brand-sub{display:none}#metis-export-study .mx-stage[data-status=active]{flex-grow:3}#metis-export-study .mx-stage-head{flex-direction:column;gap:2px}#metis-export-study .mx-stage .mx-glyph{scale:.65}#metis-export-study .mx-stage[data-status=active] .mx-glyph{scale:.9}#metis-export-study .mx-seed{font-size:11px;padding:3px 4px;left:3px}#metis-export-study .mx-stage .mx-seed:nth-of-type(2){left:3px}#metis-export-study .mx-chain{padding-left:14px;padding-right:14px;gap:7px}#metis-export-study .mx-journey[data-compact=true] .mx-stage-head{flex-direction:row}#metis-export-study .mx-journey[data-compact=true] .mx-stage-head em{display:none}}
+@media(max-width:520px){#metis-export-study .mx-heading h1{font-size:22px}#metis-export-study .mx-heading{align-items:start;gap:9px}#metis-export-study .mx-brand{font-size:20px}#metis-export-study .mx-sample{font-size:11px}#metis-export-study .mx-page{padding:14px}#metis-export-study .mx-demo{padding:6px 14px;gap:12px}#metis-export-study .mx-fields{grid-template-columns:1fr}#metis-export-study .mx-input-panel{padding:18px}#metis-export-study .mx-table td,#metis-export-study .mx-table th{padding:10px 9px}#metis-export-study .mx-sku{font-size:11px}#metis-export-study .mx-journey-top small{display:none}#metis-export-study .mx-chain{flex-direction:column;padding-top:14px}#metis-export-study .mx-chain::before{top:20px;bottom:20px;left:37px;width:1px;height:auto;right:auto}#metis-export-study .mx-stage{flex:auto;height:48px}#metis-export-study .mx-stage[data-status=active]{flex:auto;height:192px}#metis-export-study .mx-stage .mx-glyph{top:-14px;left:30px;scale:.42}#metis-export-study .mx-stage[data-status=active] .mx-glyph{top:52px;left:60%;scale:1}#metis-export-study .mx-stage-head{flex-direction:row;margin-left:52px;padding:13px 10px;gap:8px}#metis-export-study .mx-stage[data-status=active] .mx-stage-head{margin-left:0}#metis-export-study .mx-stage-status{left:auto;right:12px;bottom:16px}#metis-export-study .mx-stage[data-status=active] .mx-stage-status{left:0;right:0;bottom:14px}#metis-export-study .mx-wait-copy{bottom:34px;font-size:11px}#metis-export-study .mx-seed{left:18px;top:65px}#metis-export-study .mx-stage .mx-seed:nth-of-type(2){left:18px;top:96px}#metis-export-study .mx-seed:nth-of-type(3){top:127px}#metis-export-study .mx-journey[data-compact=true] .mx-chain{flex-direction:row;gap:4px;padding:10px 9px 12px}#metis-export-study .mx-journey[data-compact=true] .mx-chain::before{left:8%;right:8%;top:50%;height:1px;width:auto}#metis-export-study .mx-journey[data-compact=true] .mx-stage{flex:1 1 0;height:94px}#metis-export-study .mx-journey[data-compact=true] .mx-stage[data-status=active]{flex-grow:1.5}#metis-export-study .mx-journey[data-compact=true] .mx-stage-head{margin-left:0;padding:7px 2px;justify-content:center;font-size:11px}#metis-export-study .mx-journey[data-compact=true] .mx-stage .mx-glyph{left:50%;top:24px;scale:.4}#metis-export-study .mx-journey[data-compact=true] .mx-stage[data-status=active] .mx-glyph{scale:.5}#metis-export-study .mx-journey[data-compact=true] .mx-stage-status{left:0;right:0;bottom:7px}#metis-export-study .mx-report-body{padding:22px}#metis-export-study .mx-report-body h3{font-size:22px}#metis-export-study .mx-report-rows{grid-template-columns:1fr;gap:5px}#metis-export-study .mx-report-rows dd{margin-bottom:12px}#metis-export-study .mx-ready{font-size:11px}}
+@media(pointer:coarse){#metis-export-study button{min-height:44px}#metis-export-study input,#metis-export-study select,#metis-export-study textarea{font-size:16px}}
+</style>
+
+<div id="metis-export-study" aria-label="METIS 导出优先界面方案" data-motion="playing">
+  <header class="mx-top"><div class="mx-brand"><span class="mx-monogram" aria-hidden="true"></span>METIS</div><span class="mx-brand-sub">从一家店，到一份选品清单</span><span class="mx-sample">设计演示 · 示例数据</span></header>
+  <nav class="mx-nav" aria-label="界面导航"><button type="button" data-view="workbench" aria-pressed="true">工作台</button><button type="button" data-view="stores" aria-pressed="false">店铺</button><button type="button" data-view="input" aria-pressed="false">新建店铺</button></nav>
+  <div class="mx-demo" aria-label="原型演示控制"><span id="mx-demo-note">自动演示 · 等待时间已压缩</span><button type="button" data-action="pause">暂停演示</button><button type="button" data-action="next">下一阶段</button><button type="button" data-action="replay">重新演示</button></div>
+
+  <section class="mx-page" data-page="stores" hidden>
+    <div class="mx-heading"><div><h1>我的店铺</h1><p>每家店的分析、场景与选品文件都留在这里，随时打开继续。</p></div><button class="mx-button mx-primary" type="button" data-view="input">新建店铺</button></div>
+    <div class="mx-store-list" id="mx-store-list"></div>
+  </section>
+
+  <section class="mx-page" data-page="input" hidden>
+    <div class="mx-heading"><div><h1>从这家店，开始选品。</h1><p>提供截图或商品名，生成一份可以带走的选品文件。</p></div></div>
+    <div class="mx-panel mx-input-panel">
+      <div class="mx-fields"><label>销售国家<select id="mx-country"><option value="">请选择国家</option><option>泰国</option><option>菲律宾</option><option>越南</option><option>马来西亚</option></select></label><label>店铺名称 · 选填<input id="mx-store-name" placeholder="不填则自动命名" maxlength="120"></label></div>
+      <div class="mx-drop"><span class="mx-glyph mx-report" aria-hidden="true"><span></span><span></span><span></span></span><button class="mx-button" type="button" data-action="sample">使用示例店铺资料</button><p>正式页面支持选图、拖入或粘贴截图</p></div>
+      <label class="mx-label" for="mx-products">也可以直接填写商品名</label><textarea id="mx-products" placeholder="例如：便携烤炉、露营餐具、折叠桌"></textarea>
+      <p class="mx-input-hint">默认生成经营分析、使用场景和商品清单。高级参数收起，不阻挡提交。</p>
+      <div class="mx-input-actions"><small>Excel · 主 / 子 SKU · 场景 · 经营分析</small><button class="mx-button mx-primary" type="button" data-action="start">开始生成 →</button></div>
+    </div>
+  </section>
+
+  <section class="mx-page" data-page="workbench" hidden>
+    <div class="mx-heading"><div><h1>户外生活店</h1><p>泰国市场 · 便携烹饪 / 户外用餐</p></div><span class="mx-ready" id="mx-task-status" role="status"><i></i>正在分析店铺</span></div>
+    <div class="mx-journey" id="mx-journey" data-compact="false" aria-label="资料到选品文件的连续流程">
+      <div class="mx-atmosphere" aria-hidden="true"><div class="mx-light"></div><div class="mx-light"></div></div>
+      <div class="mx-journey-top"><strong><span class="mx-live-dot" aria-hidden="true"></span><span id="mx-motion-action">正在把店铺资料，汇成经营判断</span></strong><small>METIS / IN THE MAKING</small></div>
+      <div class="mx-chain" id="mx-chain" role="list" aria-label="生成流程"></div>
+      <p class="mx-chain-note">分析一出来，就可以先阅读。商品匹配会在后台继续。</p>
+    </div>
+    <div class="mx-work-area" id="mx-work-area" data-ready="false" inert aria-hidden="true"><div class="mx-work-inner"><div class="mx-layout">
+      <div class="mx-panel">
+        <div class="mx-panel-top"><h2 id="mx-preview-title">店铺分析</h2><span class="mx-sku" id="mx-preview-scope">已生成 · 可先阅读</span></div>
+        <div class="mx-switches" aria-label="查看工作台内容"><button type="button" data-content="analysis" aria-pressed="true">店铺分析</button><button type="button" data-content="preview" aria-pressed="false" disabled>商品清单 · 生成中</button></div>
+        <div data-content-panel="analysis">
+          <nav class="mx-report-tabs" aria-label="店铺分析章节"><button type="button" data-report="0" aria-pressed="true">经营判断</button><button type="button" data-report="1" aria-pressed="false">店铺画像</button><button type="button" data-report="2" aria-pressed="false">现有产品</button><button type="button" data-report="3" aria-pressed="false">拓展方向</button><button type="button" data-report="4" aria-pressed="false">目标人群</button><button type="button" data-report="5" aria-pressed="false">运营建议</button></nav>
+          <article class="mx-report-body" data-report-panel="0"><div class="mx-eyebrow">01 / STORE DIRECTION</div><h3>从一顿户外饭出发，<br>把单品做成一套生活方式。</h3><p>已有的烤炉、餐具与折叠桌，串起了“烹饪 — 用餐 — 收纳”的需求。店铺可以围绕<strong>轻便、成套、容易出发</strong>建立清晰的商品方向。</p><div class="mx-report-divider"></div><h4>接下来，优先补齐什么</h4><dl class="mx-report-rows"><dt>把主力做深</dt><dd>围绕烤炉补齐烤夹、餐具与隔热用品，让同一次购买解决一顿饭。</dd><dt>把场景连起来</dt><dd>从庭院烧烤延伸到周末露营与公园野餐，共用桌面、收纳和用餐商品。</dd><dt>保持店铺聚焦</dt><dd>先补齐同一用途里的缺口，再考虑跨度更大的户外装备。</dd></dl></article>
+          <article class="mx-report-body" data-report-panel="1" hidden><div class="mx-eyebrow">02 / STORE PROFILE</div><h3>一家围绕便携烹饪<br>与户外用餐的店。</h3><p>示例资料中的商品集中在短途、日常可用的户外生活。店铺定位可以落在<strong>轻量户外用餐</strong>，让用户能快速理解来这里可以买齐什么。</p><dl class="mx-report-rows"><dt>已有线索</dt><dd>便携烤炉、露营餐具、折叠桌。</dd><dt>核心价值</dt><dd>容易携带、使用门槛低、成套解决用餐需求。</dd><dt>信息边界</dt><dd>当前未提供真实销量与价格资料；不据此断言价格带、热销表现或人群占比。</dd></dl></article>
+          <article class="mx-report-body" data-report-panel="2" hidden><div class="mx-eyebrow">03 / CURRENT ASSORTMENT</div><h3>主线已经有了，<br>组合还可以更完整。</h3><p>先按商品承担的用途理解现有结构，再寻找缺口。以下是示例资料的整理。</p><dl class="mx-report-rows"><dt>烹饪核心</dt><dd>便携烤炉：负责完成户外烹饪，是组合的起点。</dd><dt>用餐配套</dt><dd>露营餐具：承接烹饪之后的分装与进食需求。</dd><dt>场景支撑</dt><dd>折叠桌：让准备、摆放与用餐有稳定的空间。</dd><dt>待补角色</dt><dd>夹取、隔热、保温、清洁与随行收纳。</dd></dl></article>
+          <article class="mx-report-body" data-report-panel="3" hidden><div class="mx-eyebrow">04 / NEXT OPPORTUNITIES</div><h3>沿着用途扩展，<br>让每一个新品都有来处。</h3><p>先从现有商品自然延伸。具体可采购货号与库存仍由后续匹配确认。</p><dl class="mx-report-rows"><dt>庭院烧烤</dt><dd>补充烤夹、耐热手套与烹饪配件，让已有烤炉形成组合。</dd><dt>周末露营</dt><dd>补充餐具收纳、便携保温与清洁用品，覆盖出发到收好的过程。</dd><dt>公园野餐</dt><dd>尝试防潮垫、保温袋等邻近用途，延伸到更轻量的户外用餐。</dd></dl></article>
+          <article class="mx-report-body" data-report-panel="4" hidden><div class="mx-eyebrow">05 / PEOPLE & NEEDS</div><h3>按“要完成什么”，<br>理解潜在顾客。</h3><p>这里的人群是根据商品用途提出的需求假设，需要真实经营数据验证。</p><dl class="mx-report-rows"><dt>家庭聚餐</dt><dd>在庭院或近郊准备一顿饭，关注实用、成套与收拾方便。</dd><dt>周末轻露营</dt><dd>短途出发，关注便携、收纳体积与装备之间的搭配。</dd><dt>朋友野餐</dt><dd>快速布置用餐空间，关注携带、摆放与食物保温。</dd></dl></article>
+          <article class="mx-report-body" data-report-panel="5" hidden><div class="mx-eyebrow">06 / OPERATING IDEAS</div><h3>让顾客看到<br>这套商品怎么一起用。</h3><p>内容围绕真实使用过程组织，选品围绕场景缺口组织。</p><dl class="mx-report-rows"><dt>展示方式</dt><dd>用“准备 → 烹饪 → 用餐 → 收纳”的顺序展示商品，说明每件商品的用途。</dd><dt>组合建议</dt><dd>主商品搭配必要配件；组合是否上架，仍需核对库存、规格与价格。</dd><dt>验证方式</dt><dd>先测试少量关联商品，观察组合加购与成交，再决定拓展范围。</dd></dl></article>
+          <div class="mx-report-footer"><span>完整店铺分析也会写入 Excel</span><span id="mx-reading-status">场景正在生成，可以继续阅读</span></div>
+        </div>
+        <div data-content-panel="preview" hidden>
+          <div class="mx-band-scene">
+            <div class="mx-band-head"><h3>使用场景</h3><span>先选一个场景，下面只列它召回的货号。</span></div>
+            <div class="mx-scene-nav" id="mx-scene-nav" aria-label="预览场景"></div>
+          </div>
+          <div class="mx-band-recall">
+            <div class="mx-band-head"><h3>召回商品</h3><span class="mx-preview-note" id="mx-preview-note"></span></div>
+            <div class="mx-legend"><span class="mx-chip mx-chip-ok">相关</span><span class="mx-chip mx-chip-no">不相关</span><span class="mx-chip mx-chip-unknown">未复核</span><span>复核只做标记，不剔除候选</span></div>
+            <table class="mx-table"><thead><tr><th scope="col">主 SKU</th><th scope="col">商品 / 角色 / 复核</th><th scope="col">泰国库存</th></tr></thead><tbody id="mx-table-rows"></tbody></table>
+          </div>
+          <div class="mx-preview-footer">Excel 按场景分组；同场景不重复，货号独立成格。</div>
+        </div>
+        <div data-content-panel="custom" hidden>
+          <div class="mx-band-scene"><div class="mx-band-head"><h3>按场景选入</h3><span class="mx-preview-note">可整组选入，也可展开到商品角色和货号。</span></div></div>
+          <div class="mx-custom" id="mx-custom-list"></div>
+        </div>
+      </div>
+      <aside class="mx-panel mx-export" aria-label="导出文件">
+        <div class="mx-file"><span class="mx-file-icon"><span class="mx-glyph mx-file" aria-hidden="true"><span></span><span></span><span></span></span></span><div><strong>户外生活店 · 选品报告</strong><small>EXCEL WORKBOOK / .xlsx</small></div></div>
+        <p class="mx-export-status" id="mx-export-status">店铺分析已生成。<br>正在补齐场景与商品。</p>
+        <fieldset id="mx-export-scope" disabled><legend>导出范围</legend><label class="mx-radio"><input type="radio" name="mx-scope" value="all" checked>全部候选</label><label class="mx-radio"><input type="radio" name="mx-scope" value="stock">仅泰国有货</label><label class="mx-radio"><input type="radio" name="mx-scope" value="custom">自选商品</label></fieldset>
+        <p class="mx-count" id="mx-count" aria-live="polite"></p>
+        <button class="mx-button mx-primary" type="button" data-action="export" disabled>商品准备中</button><button class="mx-button" type="button" data-action="adjust" disabled>调整商品</button>
+        <div class="mx-contents"><strong>一个文件，包含</strong><br>场景主 SKU · 子 SKU · 去重清单<br>店铺概况 · 候选明细 · 导出说明</div>
+      </aside>
+    </div></div></div>
+  </section>
+  <div class="mx-toast" id="mx-toast" role="status" aria-live="polite">演示从等待开始：约 8 秒后分析自动展开，顶部落下进度链，数据汇入动效在画布上进行。切到“店铺”可以看到同一家店的状态。原型仅使用示例数据。</div>
+</div>
+
+<script>
+(() => {
+  // MODEL START: pure selection rules, checked by check_ui_proposal.cjs.
+  const mxItems = [
+    {scene:0,sku:'DEMO-101',name:'便携烧烤炉',role:'户外烹饪',stock:128,review:'相关'},
+    {scene:0,sku:'DEMO-102',name:'不锈钢烤夹',role:'烹饪工具',stock:64,review:'相关'},
+    {scene:0,sku:'DEMO-103',name:'折叠餐桌',role:'用餐支撑',stock:0,review:'相关'},
+    {scene:1,sku:'DEMO-201',name:'露营餐具套装',role:'便携用餐',stock:36,review:'相关'},
+    {scene:1,sku:'DEMO-202',name:'灯具收纳包',role:'随行收纳',stock:null,review:'未复核'},
+    {scene:1,sku:'DEMO-103',name:'折叠餐桌',role:'用餐支撑',stock:0,review:'相关'},
+    {scene:2,sku:'DEMO-301',name:'防潮野餐垫',role:'户外就坐',stock:91,review:'相关'},
+    {scene:2,sku:'DEMO-302',name:'便携保温袋',role:'食物保温',stock:18,review:'相关'},
+    {scene:2,sku:'DEMO-303',name:'家用装饰托盘',role:'食物摆放',stock:52,review:'不相关'}
+  ];
+  const mxScenes = ['庭院烧烤','周末露营','公园野餐'];
+  function mxChoose(scope, picked) {
+    return mxItems.filter((item,index) => scope === 'all' || (scope === 'stock' ? item.stock != null && item.stock > 0 : picked.includes(index)));
+  }
+  function mxCounts(rows) {
+    return { scenes:new Set(rows.map(r=>r.scene)).size, perScene:new Set(rows.map(r=>r.scene+'|'+r.sku)).size, unique:new Set(rows.map(r=>r.sku)).size };
+  }
+  // Compressed demonstration time only. Production must use backend stage/asset readiness.
+  const mxBoundaries=[8,15,22,40];
+  function mxPhase(elapsed){
+    const found=mxBoundaries.findIndex(end=>elapsed<end), stage=found<0?4:found;
+    return {stage,analysisReady:stage>=1,done:stage===4};
+  }
+  function mxFlowPaths(stage,w,h,compact,narrow){
+    const cx=w*(narrow && !compact ? .6 : .5), cy=compact?48:(narrow?90:116);
+    const curve=(x,y,tx,ty)=>`M${x},${y} C${(x+tx)/2},${y} ${(x+tx)/2},${ty} ${tx},${ty}`;
+    if(stage===3)return Array.from({length:32},(_,i)=>curve(i%2?w:0,30+Math.floor(i/2)/15*(h-49),cx,cy));
+    if(stage===0)return [0,1,2].map(i=>curve(compact?0:74,compact?33+i*14:(narrow?76+i*30:80+i*43),cx,cy));
+    return [0,1,2].map(i=>curve(cx,cy,w-8,compact?34+i*13:75+i*40));
+  }
+  // MODEL END
+  const root=document.getElementById('metis-export-study');
+  const q=s=>root.querySelector(s), qa=s=>[...root.querySelectorAll(s)];
+  const reduced=window.matchMedia('(prefers-reduced-motion:reduce)');
+  const state={version:2,view:'workbench',scope:'all',picked:[],scene:0,content:'analysis',report:0,elapsed:0,paused:reduced.matches};
+  const design={accent:'#0a8fd4',radius:16};
+  const saved=window.openai?.widgetState?.privateContent;
+  function restore(value){
+    if(!value || typeof value!=='object'||value.version!==2)return;
+    if(['input','workbench','stores'].includes(value.view))state.view=value.view;
+    if(['all','stock','custom'].includes(value.scope))state.scope=value.scope;
+    if(['preview','analysis','custom'].includes(value.content))state.content=value.content;
+    if(Number.isInteger(value.scene)&&value.scene>=0&&value.scene<3)state.scene=value.scene;
+    if(Number.isInteger(value.report)&&value.report>=0&&value.report<6)state.report=value.report;
+    if(Number.isFinite(value.elapsed))state.elapsed=Math.max(0,Math.min(40,value.elapsed));
+    if(Array.isArray(value.picked))state.picked=[...new Set(value.picked.filter(i=>Number.isInteger(i)&&i>=0&&i<mxItems.length))];
+    if(typeof value.paused==='boolean')state.paused=value.paused;
+    if(reduced.matches)state.paused=true;
+    if(!mxPhase(state.elapsed).done)state.content='analysis';
+  }
+  restore(saved);
+  function save(){window.openai?.setWidgetState?.({modelContent:{design:'METIS 同页等待与阅读方案',page:state.view,exportScope:state.scope,motionStage:mxPhase(state.elapsed).stage,analysisSection:state.report},privateContent:{...state}})?.catch(()=>{});}
+  function notice(text){q('#mx-toast').textContent=text;}
+  function renderResult(){
+    const rows=mxChoose(state.scope,state.picked), count=mxCounts(rows), {done}=mxPhase(state.elapsed);
+    qa('[name=mx-scope]').forEach(el=>el.checked=el.value===state.scope);
+    q('#mx-count').innerHTML=done?`<strong>${count.scenes}</strong> 个场景 · <strong>${count.unique}</strong> 个不同主 SKU<br>按场景输出 ${count.perScene} 条，另附去重清单`:'';
+    q('[data-action=export]').disabled=!done||!rows.length;
+    q('[data-action=export]').textContent=done?'导出 Excel ↓':'商品准备中';
+    q('[data-action=adjust]').disabled=!done;
+    q('#mx-export-scope').disabled=!done;
+    q('[data-content=preview]').disabled=!done;
+    q('[data-content=preview]').textContent=done?`商品清单 · ${count.unique} 个主 SKU`:'商品清单 · 生成中';
+    q('#mx-preview-scope').textContent=state.content==='analysis'?'已生成 · 可先阅读':{all:'全部候选',stock:'仅泰国有货',custom:'自选商品'}[state.scope];
+    q('#mx-preview-title').textContent={custom:'调整导出商品',analysis:'店铺分析',preview:'导出内容预览'}[state.content];
+    qa('[data-content-panel]').forEach(el=>el.hidden=el.dataset.contentPanel!==state.content);
+    qa('[data-content]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.content===state.content)));
+    const perScene=i=>rows.filter(r=>r.scene===i).length;
+    q('#mx-scene-nav').innerHTML=mxScenes.map((s,i)=>`<button type="button" data-scene="${i}" aria-pressed="${i===state.scene}"><b>${s}</b><span>${perScene(i)} 条货号</span></button>`).join('');
+    q('#mx-preview-note').textContent=`当前场景「${mxScenes[state.scene]}」· ${perScene(state.scene)} 条；库存与复核为演示数据。`;
+    const visible=rows.filter(r=>r.scene===state.scene).sort((a,b)=>(b.stock??-1)-(a.stock??-1));
+    const reviewChip=review=>`<span class="mx-chip ${review==='不相关'?'mx-chip-no':review==='未复核'?'mx-chip-unknown':'mx-chip-ok'}">${review}</span>`;
+    q('#mx-table-rows').innerHTML=visible.length?visible.map(r=>`<tr><td><span class="mx-sku">${r.sku}</span></td><td><span class="mx-name">${r.name}</span><span class="mx-meta">${r.role}${reviewChip(r.review)}</span></td><td>${r.stock==null?'<span class="mx-dim">未核验</span>':r.stock===0?'<span class="mx-dim">无货</span>':r.stock}</td></tr>`).join(''):'<tr><td colspan="3"><div class="mx-empty">这个范围下没有商品</div></td></tr>';
+    // Keep native details open while checkboxes change.
+    if(!q('#mx-custom-list').children.length){
+      q('#mx-custom-list').innerHTML=mxScenes.map((s,i)=>`<details><summary>${s}</summary><button class="mx-text-button" type="button" data-group="${i}">整组选入 / 取消</button>${mxItems.map((r,j)=>r.scene===i?`<details><summary>${r.role}</summary><label><input type="checkbox" data-item="${j}"><span>${r.name}<br><span class="mx-sku">${r.sku} · ${r.stock==null?'库存未核验':r.stock+' 件'} · ${r.review}</span></span></label></details>`:'').join('')}</details>`).join('');
+    }
+    qa('[data-item]').forEach(el=>el.checked=state.picked.includes(Number(el.dataset.item)));
+    qa('[data-report]').forEach(el=>el.setAttribute('aria-pressed',String(Number(el.dataset.report)===state.report)));
+    qa('[data-report-panel]').forEach(el=>el.hidden=Number(el.dataset.reportPanel)!==state.report);
+  }
+  const stages=[
+    {name:'店铺分析',glyph:'report',action:'正在把店铺资料，汇成经营判断',copy:'已有信息 → 店铺方向',done:'已生成'},
+    {name:'使用场景',glyph:'scene',action:'分析已生成 · 正在展开使用场景',copy:'店铺方向 → 生活场景',done:''},
+    {name:'场景商品',glyph:'product',action:'可以继续阅读 · 正在衍生场景商品',copy:'场景 → 角色 → 商品',done:'已生成'},
+    {name:'商品匹配',glyph:'recall',action:'可以继续阅读 · 正在匹配货号与库存',copy:'多路召回 → 候选货号',done:''}
+  ];
+  // Keep the four stage elements alive throughout the journey so earlier stages shrink in place.
+  q('#mx-chain').innerHTML=stages.map((s,i)=>`<div class="mx-stage" data-stage="${i}" data-status="${i===0?'active':'pending'}" role="listitem"><div class="mx-stage-head"><em>0${i+1}</em><b>${s.name}</b></div><svg class="mx-flow" aria-hidden="true"></svg>${i===0?'<span class="mx-seed">店铺截图</span><span class="mx-seed">商品线索</span><span class="mx-seed">销售市场</span>':''}<span class="mx-glyph mx-${s.glyph}" aria-hidden="true"><span></span><span></span><span></span></span><span class="mx-wait-copy">${s.copy}</span><span class="mx-stage-status">${i===0?'正在生成':'等待前序'}</span></div>`).join('');
+  const stageEls=qa('[data-stage]'), lights=qa('.mx-light');
+  let tails=[], needPaths=true, lastPhase=-1, visible=true, visualTime=0;
+  function drawFlows(){
+    needPaths=false;tails=[];
+    const phase=mxPhase(state.elapsed), narrow=root.clientWidth<=520;
+    stageEls.forEach((el,i)=>{
+      const svg=el.querySelector('.mx-flow'), w=el.clientWidth,h=el.clientHeight;
+      if(i!==phase.stage||!w){svg.innerHTML='';return;}
+      svg.setAttribute('viewBox',`0 0 ${w} ${h}`);
+      svg.innerHTML=mxFlowPaths(i,w,h,phase.analysisReady,narrow).map(d=>`<path class="mx-flow-track" d="${d}"${i===3?' stroke-dasharray="1 5"':''}></path><path class="mx-flow-tail" d="${d}"></path>`).join('');
+      svg.querySelectorAll('.mx-flow-tail').forEach((p,j)=>{const length=p.getTotalLength(), size=i===3?3:14;p.style.strokeDasharray=`${size} ${length+size}`;tails.push({p,length,size,offset:j*.137});});
+    });
+  }
+  // Three shops: the demo one tracks the live phase, so "did it finish?" is answered here.
+  const mxStores=[
+    {name:'户外生活店',country:'泰国',when:'刚刚',note:'便携烹饪 / 户外用餐',kind:'live'},
+    {name:'东南亚家居旗舰',country:'菲律宾',when:'昨天 18:40',note:'收纳 / 家用小件',kind:'done'},
+    {name:'庭院烧烤专营',country:'马来西亚',when:'09-19 建店',note:'还没生成过分析',kind:'idle'}
+  ];
+  function renderStores(){
+    const phase=mxPhase(state.elapsed), count=mxCounts(mxChoose(state.scope,state.picked));
+    const live=phase.done?{cls:'is-done',text:'文件已就绪，可导出'}
+      :phase.analysisReady?{cls:'is-live',text:'分析已生成 · 正在匹配货号与库存'}
+      :{cls:'is-live',text:'正在生成店铺分析'};
+    const steps=n=>`<span class="mx-store-steps" aria-hidden="true">${[0,1,2,3].map(i=>`<i data-on="${i<n}"></i>`).join('')}</span>`;
+    const actions=kind=>kind==='live'
+      ?'<button class="mx-button mx-primary" type="button" data-view="workbench">打开工作台</button>'
+      :kind==='done'
+      ?'<button class="mx-button mx-primary" type="button" data-view="workbench">打开并导出</button><button class="mx-button" type="button" data-view="workbench">查看商品清单</button>'
+      :'<button class="mx-button mx-primary" type="button" data-view="input">开始生成</button>';
+    q('#mx-store-list').innerHTML=mxStores.map(store=>{
+      const status=store.kind==='live'?live:store.kind==='done'?{cls:'is-done',text:'文件已就绪，可导出'}:{cls:'',text:'还没开始生成'};
+      const filled=store.kind==='live'?phase.stage+1:store.kind==='done'?4:0;
+      const ready=store.kind==='done'||(store.kind==='live'&&phase.done);
+      const tail=ready?`${count.perScene} 条场景商品 · ${count.unique} 个主 SKU`:store.note;
+      return `<article class="mx-store"><div><div class="mx-store-name">${store.name}<span class="mx-store-flag">${store.country}</span></div><div class="mx-store-meta"><span class="mx-store-status ${status.cls}"><span class="mx-store-dot" aria-hidden="true"></span>${status.text}</span><span>${store.when}</span><span>${tail}</span></div></div><div class="mx-store-actions">${steps(filled)}${actions(store.kind)}</div></article>`;
+    }).join('');
+  }
+  function renderProgress(){
+    const phase=mxPhase(state.elapsed), found=mxCounts(mxItems);
+    // The chain reports what the store produced, so it does not follow the export scope.
+    stages[1].done=`${found.scenes} 个场景`;stages[3].done=`${found.unique} 个主 SKU`;
+    root.dataset.motion=state.paused||phase.done?'paused':'playing';
+    q('#mx-journey').dataset.compact=String(phase.analysisReady);
+    q('#mx-work-area').dataset.ready=String(phase.analysisReady);
+    q('#mx-work-area').inert=!phase.analysisReady;
+    q('#mx-work-area').setAttribute('aria-hidden',String(!phase.analysisReady));
+    stageEls.forEach((el,i)=>{
+      const status=i<phase.stage?'done':i===phase.stage?'active':'pending';
+      el.dataset.status=status;
+      el.querySelector('.mx-stage-status').textContent=status==='done'?stages[i].done:status==='active'?'正在生成':'等待前序';
+      el.setAttribute('aria-label',stages[i].name+'，'+(status==='done'?'已完成':status==='active'?'正在生成':'等待前序'));
+      el.querySelector('.mx-glyph').style.transform='';
+    });
+    q('#mx-motion-action').textContent=phase.done?'选品文件已就绪，随时可以导出':stages[phase.stage].action;
+    q('#mx-task-status').innerHTML='<i></i>'+(phase.done?'可导出':phase.analysisReady?'分析已生成':'正在分析店铺');
+    q('#mx-reading-status').textContent=phase.done?'文件已就绪，阅读位置保留':['店铺分析中','场景正在生成，可以继续阅读','商品需求生成中，可以继续阅读','货号与库存匹配中，可以继续阅读'][phase.stage];
+    q('#mx-export-status').innerHTML=phase.done?'<strong>文件已准备好</strong><br>直接导出，或先调整商品范围。':'<strong>店铺分析已生成</strong><br>'+['正在整理资料。','正在补齐使用场景。','正在补齐场景商品。','正在匹配货号、库存与相关度。'][phase.stage];
+    q('[data-action=next]').disabled=phase.done||state.view!=='workbench';
+    q('[data-action=pause]').disabled=phase.done||state.view!=='workbench';
+    q('[data-action=pause]').textContent=state.paused?'继续演示':'暂停演示';
+    q('#mx-demo-note').textContent=reduced.matches?'减少动态效果已开启 · 可点下一阶段':state.view==='workbench'?'自动演示 · 等待时间已压缩':'演示已暂停 · 回到工作台继续';
+    if(lastPhase!==phase.stage){
+      const here=state.view==='workbench';
+      if(phase.stage===1)notice(here?'店铺分析已展开，后续流程在顶部继续。可以切换分析章节。':'这家店的分析已生成，打开工作台就能开始阅读。');
+      if(phase.done)notice(here?'文件已就绪。无需退出店铺分析，右侧即可模拟导出。':'这份选品文件已就绪，打开工作台即可导出。');
+      lastPhase=phase.stage;needPaths=true;
+    }
+    renderResult();renderStores();
+  }
+  function render(){
+    qa('[data-page]').forEach(el=>el.hidden=el.dataset.page!==state.view);
+    qa('.mx-nav [data-view]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.view===state.view)));
+    renderProgress();needPaths=true;
+  }
+  root.addEventListener('click',event=>{
+    const b=event.target.closest('button');if(!b||!root.contains(b)||b.disabled)return;
+    if(b.dataset.view){state.view=b.dataset.view;render();save();return;}
+    if(b.dataset.report!=null){state.report=Number(b.dataset.report);renderResult();save();return;}
+    if(b.dataset.content){state.content=b.dataset.content;renderResult();save();return;}
+    if(b.dataset.scene!=null){state.scene=Number(b.dataset.scene);renderResult();save();return;}
+    if(b.dataset.group!=null){const indexes=mxItems.flatMap((r,i)=>r.scene===Number(b.dataset.group)?[i]:[]);const all=indexes.every(i=>state.picked.includes(i));state.picked=all?state.picked.filter(i=>!indexes.includes(i)):[...new Set([...state.picked,...indexes])];renderResult();save();return;}
+    switch(b.dataset.action){
+      case 'sample':q('#mx-country').value='泰国';q('#mx-store-name').value='户外生活店';q('#mx-products').value='便携烤炉、露营餐具、折叠桌';notice('已填入示例资料。点击“开始生成”查看动效。');break;
+      case 'start':if(!q('#mx-country').value||!q('#mx-products').value.trim()){notice('请先选择国家，并填写商品名；也可以使用示例资料。');return;}
+      // The fixed sample is intentional: input does not submit or reinterpret real store data.
+      case 'replay':if(state.view!=='workbench')state.view='workbench';state.elapsed=0;state.content='analysis';state.report=0;state.paused=reduced.matches;notice('示例店铺演示：约 8 秒后自动展开分析，后续流程继续。');render();break;
+      case 'next':state.elapsed=mxBoundaries[mxPhase(state.elapsed).stage];renderProgress();break;
+      case 'pause':state.paused=!state.paused;renderProgress();break;
+      case 'adjust':state.scope='custom';state.content='custom';renderResult();notice('自选模式：可整组选入，也可展开到商品角色和 SKU。');break;
+      case 'export':{const c=mxCounts(mxChoose(state.scope,state.picked));notice(`模拟导出：${c.scenes} 个场景，${c.perScene} 条场景商品，${c.unique} 个不同主 SKU。正式版在此直接下载 Excel。`);break;}
+    }
+    save();
+  });
+  root.addEventListener('change',event=>{
+    const el=event.target;
+    if(el.name==='mx-scope'){state.scope=el.value;if(state.scope==='custom')state.content='custom';else if(state.content==='custom')state.content='preview';renderResult();save();}
+    if(el.dataset.item!=null){const i=Number(el.dataset.item);state.picked=el.checked?[...new Set([...state.picked,i])]:state.picked.filter(v=>v!==i);renderResult();save();}
+  });
+  window.addEventListener('openai:set_globals',event=>{const value=event.detail?.globals?.widgetState?.privateContent;if(value){restore(value);render();}});
+  const resize=new ResizeObserver(()=>{needPaths=true;});
+  stageEls.forEach(el=>resize.observe(el));
+  const intersection=new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;});intersection.observe(root);
+  reduced.addEventListener('change',()=>{if(reduced.matches)state.paused=true;renderProgress();});
+  render();
+  let previous=0;
+  function tick(now){
+    if(!root.isConnected){resize.disconnect();intersection.disconnect();return;}
+    const dt=previous?Math.min(.1,(now-previous)/1000):0;previous=now;
+    // Both the clock and the motion run only on the workbench: that is where the canvas is on
+    // screen, and a demo that finishes behind another page never shows the user its animation.
+    if(visible&&!document.hidden&&state.view==='workbench'){
+      if(!state.paused&&!mxPhase(state.elapsed).done){
+        const before=mxPhase(state.elapsed).stage;
+        state.elapsed=Math.min(40,state.elapsed+dt);
+        if(before!==mxPhase(state.elapsed).stage)renderProgress();
+      }
+      if(!reduced.matches&&!state.paused){
+        visualTime+=dt;
+        lights.forEach((el,i)=>{el.style.transform=`translate(${Math.sin(visualTime*.35+i*2)*37}%,${Math.cos(visualTime*.27+i)*26}%) scale(${1.2+Math.sin(visualTime*.25)*.2})`;});
+        const active=stageEls[mxPhase(state.elapsed).stage];
+        if(active)active.querySelector('.mx-glyph').style.transform=`translateY(${Math.sin(visualTime*2)*3}px) rotate(${Math.sin(visualTime)*3}deg)`;
+      }
+      if(needPaths)drawFlows();
+      if(!reduced.matches&&!state.paused)tails.forEach(({p,length,size,offset})=>{p.style.strokeDashoffset=String(-((visualTime*.38+offset)%1)*(length+size*2));});
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+  if(globalThis.Tweak){const tweak=new Tweak({container:root,onChange:()=>{root.style.setProperty('--mx-accent',design.accent);root.style.setProperty('--mx-radius',design.radius+'px');}});tweak.addColorPicker(design,'accent',{label:'主操作颜色',reference:'--mx-accent'});tweak.addSlider(design,'radius',{label:'表面圆角',min:8,max:22,unit:'px',reference:'--mx-radius'});}
+})();
+</script>
