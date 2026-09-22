@@ -16,6 +16,10 @@ uv run uvicorn store_scenario_inspiration.app.main:create_app --factory --port 8
 cd frontend
 npm install
 npm run dev
+
+# 前端检查：类型检查 + 生产构建，以及界面逻辑测试
+npm run build
+npm test
 ```
 
 旧的无构建链评审页（`python scripts\serve_pilot_dashboard.py`，:8787）保留作对照；它的页面文件已挪到 `frontend/legacy/index.html`，不再是最前面的入口。
