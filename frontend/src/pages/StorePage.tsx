@@ -14,6 +14,7 @@ import {
   type StoreDetail,
 } from "../api";
 import { countryName } from "../countries";
+import { paramsEqual, validateParams, stageNotice, mergeStages } from "../operatorUx";
 import ParamsPanel from "../components/ParamsPanel";
 import BusinessEvidence from "../components/BusinessEvidence";
 import ConfirmationPanel from "../components/ConfirmationPanel";
@@ -145,8 +146,8 @@ export default function StorePage() {
     const timer = setInterval(async () => {
       try {
         const next = await api.job(jobId);
-        setJob(next);
         if (shown.current !== storeId) return;
+        setJob(next);
         if (drawn.current.id !== next.id) drawn.current = { id: next.id, done: new Set() };
         const landed = next.stages.filter((stage) => stage.status === "ready" && !drawn.current.done.has(stage.name));
         if (landed.length) {
@@ -162,6 +163,19 @@ export default function StorePage() {
     return () => clearInterval(timer);
   }, [running, jobId, storeId, refresh, load]);
 
+  // Both start buttons use the visible settings. Saving settings does not itself
+  // launch a model job. The server still decides whether source data is confirmed.
+  async function saveDraft(value: Params | null = draft): Promise<StoreDetail | null> {
+    if (!detail || !value || paramsEqual(value, detail.params)) return detail;
+    const schema = await api.paramSchema();
+    const invalid = validateParams(value, schema.fields);
+    if (invalid) throw new Error(invalid);
+    await api.setParams(storeId, value);
+    const updated = await api.store(storeId);
+    if (shown.current === storeId) setDetail(updated);
+    return updated;
+  }
+
   async function run(stages?: string[], params?: Params): Promise<boolean> {
     if (requesting.current || isLive(job) || busy) return false;
     const recognitionOnly = Boolean(stages?.length) && stages!.every((stage) => ["recognize", "clues"].includes(stage));
@@ -174,7 +188,18 @@ export default function StorePage() {
       ? ["clues", "synthesis", "scenes", "products", "expand", "retrieval", "rerank"]
       : undefined);
     try {
-      const nextJob = await api.startJob(storeId, nextStages, params ?? draft ?? undefined);
+      const chosenParams = params ?? draft ?? detail?.params;
+      let stagesToRun = nextStages;
+      if (!recognitionOnly && chosenParams && detail && !paramsEqual(chosenParams, detail.params)) {
+        const updated = await saveDraft(chosenParams);
+        // A changed scene count must also refresh the scenes, even when the
+        // button was originally rendered for a retrieval-only update.
+        stagesToRun = mergeStages(nextStages ?? [], updated?.outdated ?? []);
+        if (stagesToRun.includes("recognize") || !updated?.confirmation?.confirmed) {
+          throw new Error("店铺资料已变化，请先识别并确认商品。");
+        }
+      }
+      const nextJob = await api.startJob(storeId, stagesToRun, recognitionOnly ? undefined : chosenParams);
       if (shown.current !== storeId) return false;
       setJob(nextJob);
       return true;
@@ -210,7 +235,7 @@ export default function StorePage() {
       setBusy(false);
     }
     if (added.length) {
-      setHint(`已加 ${added.length} 张截图，正在读新加的（会调用模型）。读完请重新确认店铺信息。`);
+      setHint(`已添加 ${added.length} 张截图。识别后请重新核对商品。`);
       await run(["recognize", "clues"]);
     }
   }
@@ -218,7 +243,7 @@ export default function StorePage() {
   /** Drop one screenshot, and with it whatever only that screenshot showed. */
   async function dropShot(filename: string) {
     if (busy || running) return;
-    const warning = `删掉「${filename}」？\n只有这张图里出现过的商品会跟着消失，别的图里也有的会留下。\n这一步在本机完成，不花钱。`;
+    const warning = `删除「${filename}」？\n仅在这张图中识别到的商品也会移除，之后需要重新核对。`;
     if (!window.confirm(warning)) return;
     setBusy(true);
     setError("");
@@ -255,7 +280,7 @@ export default function StorePage() {
       setClues(await api.setExcluded(storeId, next));
       setDetail(await api.store(storeId));
       if (detail?.stages.synthesis) {
-        setHint("排除名单已更新。上面的场景还是按旧名单生成的，重新生成场景才会用上新的。");
+        setHint("商品范围已更新，请重新确认后生成建议。");
       }
     } catch (e) {
       setError((e as Error).message);
@@ -266,18 +291,20 @@ export default function StorePage() {
 
   /** Send the whole hand-added list, the way the exclusion list is sent: what
    *  the operator is looking at is what gets saved. */
-  async function setProducts(next: CustomProduct[]) {
-    if (!clues || busy) return;
+  async function setProducts(next: CustomProduct[]): Promise<boolean> {
+    if (!clues || busy || running) return false;
     setBusy(true);
     setError("");
     try {
       setClues(await api.setProducts(storeId, next));
       setDetail(await api.store(storeId));
       if (detail?.stages.synthesis) {
-        setHint("商品名单已更新。上面的场景还是按旧名单生成的，重新生成场景才会用上新的。");
+        setHint("商品名单已更新，请重新确认后生成建议。");
       }
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -331,15 +358,15 @@ export default function StorePage() {
     // to facts the store has not been read for yet.
     if (reading.length) {
       return {
-        label: "读取截图",
+        label: "识别新增截图",
         stages: reading,
-        title: "把还没有读过的截图读一遍。会调用视觉模型，只读新加的那些，读过的不会重读。",
+        title: "仅识别新增截图，会调用模型。",
       };
     }
     if (!detail.confirmation?.confirmed) return null;
     if (!detail.stages.synthesis) {
       return {
-        label: "开始分析",
+        label: "生成经营建议",
         stages: ["synthesis", "scenes", "products", "expand", "retrieval", "rerank"],
         title: "按已确认的商品名单生成场景和商品匹配。这一步会调用模型。",
       };
@@ -347,31 +374,16 @@ export default function StorePage() {
     if (writing.length || recall.length) {
       const stages = [...writing, ...recall];
       return {
-        label: writing.length ? "更新分析" : "重算商品",
+        label: writing.length ? "更新经营建议" : "更新推荐商品",
         stages,
-        title: writing.length
-          ? "按改动重新写店铺结论、场景和商品，并重新匹配。这一步会调用模型。"
-          : "按改动重新匹配商品。这一步在本机完成，不花钱。",
+        title: stageNotice(stages, detail.params),
       };
     }
     return null;
   }, [detail]);
 
-  /** The search is local and free, so a setting of its own that has changed is
-   *  applied without being asked about. Once per store per shape of the change:
-   *  a run that fails has to be looked at, not restarted on every render. */
-  const rebuilt = useRef<{ store: string; signature: string }>({ store: "", signature: "" });
-  useEffect(() => {
-    if (!detail || running || busy) return;
-    const behind = detail.outdated ?? [];
-    if (!behind.length || !behind.every((name) => name === "retrieval" || name === "rerank")) return;
-    if (!detail.confirmation?.confirmed) return;
-    const signature = behind.join(",");
-    if (rebuilt.current.store === storeId && rebuilt.current.signature === signature) return;
-    rebuilt.current = { store: storeId, signature };
-    setHint("设置改过了，正在按新设置重算商品（这一步不花钱）。");
-    run(["retrieval", "rerank"]);
-  }, [detail, running, busy, storeId]);  // eslint-disable-line react-hooks/exhaustive-deps
+  // Starting or updating a recommendation is always an explicit action.
+  // Retrieval may include paid reranking, so saving a setting must not run it.
 
   if (!detail) {
     return (
@@ -383,10 +395,13 @@ export default function StorePage() {
 
   const images = detail.store.images;
   const scored = retrieval?.inventory === "available";
-  const summary = job
-    ? `${job.status === "ready" ? "上次已完成" : job.status === "failed" ? "上次失败"
-      : job.status === "cancelled" ? "已停止" : "进行中"}${job.seconds ? ` · 全程 ${took(job.seconds)}` : ""}`
-    : detail.confirmation?.confirmed ? "分析尚未开始" : "确认店铺信息后开始分析";
+  const summary = running
+    ? `正在处理${job?.seconds ? ` · 已用 ${took(job.seconds)}` : ""}`
+    : !detail.confirmation?.confirmed
+      ? (detail.stages.recognized ? "等待你核对商品" : "等待识别截图")
+      : job?.status === "failed" || job?.status === "cancelled"
+        ? "部分步骤未完成，可继续处理"
+        : detail.outdated?.length ? "有结果需要更新" : analysis ? "经营建议已生成" : "等待生成经营建议";
 
   return (
     <>
@@ -399,8 +414,8 @@ export default function StorePage() {
           <div>
             <h2>{detail.store.store_name}</h2>
             <p className="muted">
-              {countryName(detail.store.country)} · {images.length} 张截图 · 进入场景生成 {detail.kept_clues.length} 条 ·
-              已排除 {detail.excluded_clues.length} 条
+              {countryName(detail.store.country)} · {images.length} 张截图 · 已选 {detail.kept_clues.length} 类商品 ·
+              已排除 {detail.excluded_clues.length} 类
             </p>
           </div>
           <div className="run-actions">
@@ -425,14 +440,14 @@ export default function StorePage() {
                 <img src={api.imageUrl(storeId, image.filename)} alt={image.filename} />
               </button>
               <span>{image.filename}</span>
-              <button className="shot-drop" disabled={busy} title="删掉这张截图"
+              <button className="shot-drop" disabled={busy || running} title="删除这张截图" aria-label={`删除 ${image.filename}`}
                 onClick={() => dropShot(image.filename)}>×</button>
             </div>
           ))}
           <label className="shot shot-add" title="加一张截图。只会读新加的这张，已有的不会重读。">
             <input type="file" accept="image/*" multiple hidden
-              onChange={addShots} disabled={busy} />
-            <span>＋ 加图</span>
+              onChange={addShots} disabled={busy || running} />
+            <span>＋ 补充截图</span>
           </label>
         </div>
       </section>
@@ -441,6 +456,11 @@ export default function StorePage() {
         <p className="notice error" style={{ marginBottom: 16 }}>
           {error}
         </p>
+      )}
+
+      {hint && <p className="notice warn" role="status">{hint}</p>}
+      {analysis && (running || !detail.confirmation?.confirmed || Boolean(detail.outdated?.length)) && (
+        <p className="notice warn" role="status">{running ? "正在更新建议，页面中的结果可能尚未全部更新。" : "以下为上次分析结果。资料或设置已有变化，更新后再作为当前建议使用。"}</p>
       )}
 
       <div className="workbench">
@@ -497,7 +517,7 @@ export default function StorePage() {
                   nobody photographed. What the operator types here reaches the
                   same list a recognised product does. */}
               <div className="add-product">
-                <span className="lbl">新增店内商品</span>
+                <span className="lbl">补充漏掉的商品</span>
                 <div className="add-product-row">
                   <input
                     value={newProduct.name_cn}
@@ -514,11 +534,10 @@ export default function StorePage() {
                   <button
                     className="btn ghost small"
                     disabled={busy || running || !newProduct.name_cn.trim()}
-                    onClick={() => {
+                    onClick={async () => {
                       if (!clues) return;
-                      const next = [...clues.custom, newProduct];
-                      setNewProduct({ name_cn: "", name_en: "" });
-                      void setProducts(next);
+                      const next = [...clues.custom, { name_cn: newProduct.name_cn.trim(), name_en: newProduct.name_en.trim() }];
+                      if (await setProducts(next)) setNewProduct({ name_cn: "", name_en: "" });
                     }}
                   >
                     加入名单
@@ -526,11 +545,6 @@ export default function StorePage() {
                 </div>
               </div>
 
-              {hint && (
-                <p className="notice warn" style={{ marginTop: 14 }}>
-                  {hint}
-                </p>
-              )}
             </details>
           )}
 
@@ -544,13 +558,18 @@ export default function StorePage() {
               // and the answer is the server's to give: `outdated` is derived
               // from the run record, so a locally patched copy of `detail` would
               // show a button that never appears.
-              onSaved={() => { void load().catch((e: Error) => setError(e.message)); }}
+              onSaved={async () => { await load(); }}
               onDraft={setDraft}
+              onBusyChange={setBusy}
             />
           )}
 
           {detail.stages.recognized && !running && (
             <ConfirmationPanel storeId={storeId} status={detail.confirmation} busy={busy}
+              productCount={detail.kept_clues.length}
+              beforeConfirm={async () => { await saveDraft(); }}
+              onReload={load}
+              onBusyChange={setBusy}
               onStarted={(nextJob) => { setJob(nextJob); void load().catch((e: Error) => setError(e.message)); }} />
           )}
 
@@ -570,12 +589,15 @@ export default function StorePage() {
                 <p className="verdict">{analysis.manager_summary.executive_conclusion}</p>
                 <h3 className="sub">从哪里切入</h3>
                 <p className="evi">{analysis.manager_summary.business_opportunity}</p>
-                <h3 className="sub">建议动作</h3>
+                <h3 className="sub">建议先做这几件事</h3>
                 <ol className="actions">
                   {analysis.manager_summary.recommended_actions.map((action) => (
                     <li key={action}>{action}</li>
                   ))}
                 </ol>
+                {analysis.manager_summary.decision_boundary && (
+                  <details className="operator-scope"><summary>建议的适用范围</summary><p className="muted">{analysis.manager_summary.decision_boundary}</p></details>
+                )}
               </section>
 
               <BusinessEvidence context={analysis.business_context} />
@@ -623,7 +645,7 @@ export default function StorePage() {
               {!retrieval && (
                 <section className="card">
                   <p className="notice warn">
-                    场景分析已完成，商品匹配尚未完成。可更新分析继续处理；已有结果会保留。
+                    经营建议已生成，商品匹配尚未完成。已有建议可以先查看。
                   </p>
                 </section>
               )}
@@ -631,7 +653,7 @@ export default function StorePage() {
           )}
 
           {scored === false && retrieval && (
-            <p className="muted">这次没查到 {countryName(retrieval.country)} 的库存，不能据此判断商品有货或无货。</p>
+            <p className="muted">{countryName(retrieval.country)} 库存暂不可用，请在上架前核实。</p>
           )}
         </main>
 

@@ -13,9 +13,9 @@ export default function App() {
     <div className="shell">
       <div className="hero">
         <p className="eyebrow">Store Scenario Inspiration</p>
-        <h1>店铺场景灵感助手</h1>
+        <h1>店铺经营助手</h1>
         <p className="subtitle">
-          分析店铺、商品与经营方向，匹配公司产品库中的 SKU，形成可供上架选择的商品清单。
+          上传截图，查看经营建议，找到公司产品库里的可选商品。
         </p>
       </div>
       <Routes>

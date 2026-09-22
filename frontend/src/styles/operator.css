@@ -1,0 +1,27 @@
+/* Additive classes only: preserve the existing design tokens and workbench. */
+.operator-steps { display: flex; flex-wrap: wrap; gap: 12px 24px; padding: 0; margin: 20px 0 28px; list-style: none; }
+.operator-steps li { display: flex; align-items: center; gap: 8px; opacity: .65; }
+.operator-steps li[aria-current="step"] { opacity: 1; font-weight: 600; }
+.operator-steps li > span { display: inline-grid; place-items: center; width: 26px; height: 26px; border: 1px solid currentColor; border-radius: 50%; font-size: 13px; }
+.operator-upload .drop { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.operator-upload-hint { font-size: 13px; line-height: 1.7; }
+.operator-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 18px; margin-top: 20px; }
+.operator-fields .field { min-width: 0; }
+.operator-fields input, .operator-fields select { width: 100%; box-sizing: border-box; }
+.operator-technical { margin-top: 20px; }
+.operator-technical > summary { cursor: pointer; font-size: 13px; }
+.operator-settings > summary, .operator-technical > summary { line-height: 1.7; }
+.operator-settings > summary .muted { font-size: 13px; font-weight: 400; }
+.operator-settings .form-actions { margin-top: 20px; }
+.operator-confirm { border-inline-start: 3px solid currentColor; }
+.operator-kicker { display: block; margin-bottom: 8px; font-size: 12px; font-weight: 600; opacity: .65; }
+.operator-log { padding-left: 18px; margin: 14px 0 0; }
+.operator-log li { margin-bottom: 12px; font-size: 12px; overflow-wrap: anywhere; }
+.operator-log small { display: block; opacity: .7; line-height: 1.7; }
+.operator-scope { margin-top: 20px; }
+.operator-scope > summary { cursor: pointer; font-size: 13px; }
+@media (max-width: 600px) {
+  .operator-steps { gap: 12px; font-size: 12px; }
+  .operator-fields { grid-template-columns: 1fr; }
+  .operator-upload .form-actions .btn, .operator-confirm .form-actions > .btn:first-child { width: 100%; }
+}
