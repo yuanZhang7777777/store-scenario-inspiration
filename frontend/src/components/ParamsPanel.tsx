@@ -21,14 +21,19 @@ interface Props {
   /** Before the operator confirms the store, the knobs can still be saved —
    *  they are read from disk when the run starts, so saving first works. */
   confirmed: boolean;
+  /** The knobs as the form shows them, saved or not. The buttons outside this
+   *  panel read params off disk, so a knob moved and not saved would otherwise
+   *  be silently dropped from the run it was meant for. */
+  onDraft: (params: Params) => void;
 }
 
-export default function ParamsPanel({ storeId, params, onSaved, onRun, busy, canRerunLocally, confirmed }: Props) {
+export default function ParamsPanel({ storeId, params, onSaved, onRun, busy, canRerunLocally, confirmed, onDraft }: Props) {
   const [fields, setFields] = useState<ParamField[]>([]);
   const [draft, setDraft] = useState<Params>(params);
   const [note, setNote] = useState("");
   const [applying, setApplying] = useState(false);
   useEffect(() => { setDraft(params); }, [params]);
+  useEffect(() => { onDraft(draft); }, [draft, onDraft]);
   useEffect(() => {
     let active = true;
     api.paramSchema().then((schema) => { if (active) setFields(schema.fields); }).catch(() => { if (active) setNote("设置暂时无法加载，请刷新重试。"); });

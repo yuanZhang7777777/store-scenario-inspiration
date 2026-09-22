@@ -88,6 +88,10 @@ export default function StorePage() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [retrieval, setRetrieval] = useState<Retrieval | null>(null);
   const [job, setJob] = useState<Job | null>(null);
+  /** The knobs as the form currently shows them, saved or not, so a run started
+   *  from the header applies what the operator just typed rather than what was
+   *  last written to disk. */
+  const [draft, setDraft] = useState<Params | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [hint, setHint] = useState("");
@@ -128,6 +132,7 @@ export default function StorePage() {
   useEffect(() => {
     shown.current = storeId;
     setDetail(null); setAnalysis(null); setRetrieval(null); setClues(null); setJob(null); setError("");
+    setDraft(null);
     drawn.current = { id: "", done: new Set() };
     load().catch((e: Error) => { if (shown.current === storeId) setError(e.message); });
   }, [load, storeId]);
@@ -168,7 +173,7 @@ export default function StorePage() {
       ? ["clues", "scenes", "products", "synthesis", "expand", "retrieval", "rerank"]
       : undefined);
     try {
-      const nextJob = await api.startJob(storeId, nextStages, params);
+      const nextJob = await api.startJob(storeId, nextStages, params ?? draft ?? undefined);
       if (shown.current !== storeId) return false;
       setJob(nextJob);
       return true;
@@ -271,6 +276,16 @@ export default function StorePage() {
               {detail.stages.synthesis ? "更新分析" : "开始分析"}
             </button>
           )}
+          {/* A store that has been read once can be read again — the vision
+              prompt changes, or a screenshot turns out to be unreadable. It
+              costs a model call and it voids the confirmation, so it sits
+              beside the run button rather than in place of it. */}
+          {!running && detail.stages.clues && (
+            <button className="btn ghost" disabled={busy} onClick={() => run(["recognize", "clues"])}
+              title="重新读一遍截图里的商品。会再调用一次视觉模型，并且需要重新确认店铺信息。">
+              重新识别截图
+            </button>
+          )}
         </div>
       </section>
 
@@ -329,6 +344,7 @@ export default function StorePage() {
               confirmed={Boolean(detail.confirmation?.confirmed)}
               canRerunLocally={detail.stages.expansions}
               onSaved={(params) => setDetail({ ...detail, params })}
+              onDraft={setDraft}
               onRun={run}
             />
           )}
