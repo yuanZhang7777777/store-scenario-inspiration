@@ -27,6 +27,12 @@ ROLE_SCENERY = "场景中偶然出现"
 SCHEMA_CLUES = "store-clues-v1"
 SCHEMA_EXCLUSIONS = "store-exclusions-v1"
 SCHEMA_ANALYSIS_INPUT = "store-analysis-input-v1"
+SCHEMA_CUSTOM_PRODUCTS = "store-custom-products-v1"
+
+# Marks a clue the operator typed in themselves. Recognition only sees what is
+# in the screenshots, and a store sells things it never photographed; a clue
+# with no image behind it has to be readable as such wherever it is listed.
+MANUAL_ROLE = "人工添加"
 
 DIRECTION_NOTE = (
     "observed_product_clues 是这家店截图里可见的商品，运营排除只是分析范围，不等于已验证主营或畅销方向。"
@@ -40,12 +46,18 @@ _LATIN = re.compile(r"[0-9a-z]{2,}")
 _HAN = re.compile(r"[一-鿿]{2,}")
 
 
-def review_clues(clues: list[dict], excluded: set[str]) -> dict:
+def review_clues(clues: list[dict], excluded: set[str],
+                 custom: list[dict] | None = None) -> dict:
     """Attach the operator's exclusions to the recognition output.
 
     Nothing here decides anything: a clue is excluded because the operator said
     so, and every other clue is kept. The per-image counts are carried along as
     context for that judgement, not as a verdict.
+
+    Products the operator added by hand join the same list — they are things the
+    store sells that no screenshot happened to show, and the scenes are meant to
+    be built from what the store sells. One already visible in a screenshot is
+    left to the screenshot, which is where its evidence is.
     """
     entries = []
     for clue in clues:
@@ -54,6 +66,9 @@ def review_clues(clues: list[dict], excluded: set[str]) -> dict:
         entries.append({
             "clue": name,
             "excluded": name in excluded,
+            # The screenshot's own wording, when the name above is the Chinese
+            # the vision pass translated it into. What the operator recognises.
+            "original": clue.get("original") or "",
             "role": clue.get("role"),
             "confidence": float(clue.get("confidence") or 0.0),
             "evidence": clue.get("evidence") or "",
@@ -61,6 +76,30 @@ def review_clues(clues: list[dict], excluded: set[str]) -> dict:
             "card_images": sum(1 for item in occurrences if item.get("role") == ROLE_CARD),
             "scenery_images": sum(1 for item in occurrences if item.get("role") == ROLE_SCENERY),
             "merged_from": list(clue.get("merged_from") or []),
+            "manual": False,
+        })
+    seen = {entry["clue"] for entry in entries}
+    for item in custom or []:
+        name = str(item.get("name_cn") or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        english = str(item.get("name_en") or "").strip()
+        entries.append({
+            "clue": name,
+            "excluded": name in excluded,
+            "original": english,
+            "role": MANUAL_ROLE,
+            # No screenshot to be confident about, and saying 0 reads as a
+            # measurement. The evidence sentence is what carries the fact.
+            "confidence": 0.0,
+            "evidence": f"运营手动添加，没有截图依据；英文名：{english}" if english
+                        else "运营手动添加，没有截图依据。",
+            "image_count": 0,
+            "card_images": 0,
+            "scenery_images": 0,
+            "merged_from": [],
+            "manual": True,
         })
     return {
         "schema": SCHEMA_CLUES,
@@ -89,7 +128,6 @@ def build_analysis_input(sample: dict, review: dict, *, direction: str | None = 
     gets the kept list, plus the names of what was ruled out so it cannot quietly
     bring them back.
     """
-    by_name = {clue.get("clue"): clue for clue in sample.get("observed_product_clues") or []}
     kept = [entry for entry in review["entries"] if not entry["excluded"]]
     return {
         "schema": SCHEMA_ANALYSIS_INPUT,
@@ -98,13 +136,12 @@ def build_analysis_input(sample: dict, review: dict, *, direction: str | None = 
         "direction_note": DIRECTION_NOTE,
         "observed_product_clues": [
             {
-                "clue": by_name[entry["clue"]].get("clue"),
-                "role": by_name[entry["clue"]].get("role"),
-                "confidence": by_name[entry["clue"]].get("confidence"),
-                "evidence": by_name[entry["clue"]].get("evidence"),
+                "clue": entry["clue"],
+                "role": entry["role"],
+                "confidence": entry["confidence"],
+                "evidence": entry["evidence"],
             }
             for entry in kept
-            if entry["clue"] in by_name
         ],
         "excluded_product_clues": [
             {"clue": entry["clue"], "reason": "运营手动排除"}
@@ -171,3 +208,38 @@ def load_exclusions(path: Path) -> set[str]:
 
 def save_exclusions(path: Path, names: list[str]) -> None:
     write_json(path, {"schema": SCHEMA_EXCLUSIONS, "excluded": sorted(set(names))})
+
+
+def load_custom_products(path: Path) -> list[dict]:
+    """The products the operator added by hand, as they were written down."""
+    if not path.is_file():
+        return []
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict) or value.get("schema") != SCHEMA_CUSTOM_PRODUCTS:
+        raise ValueError(f"invalid custom products: {path}")
+    products = value.get("products")
+    if not isinstance(products, list):
+        raise ValueError(f"invalid custom products: {path}")
+    return [item for item in products if isinstance(item, dict)]
+
+
+def normalize_custom_products(products: list[dict]) -> list[dict]:
+    """One entry per name, in the order the operator added them.
+
+    Shared with the route that saves them, so the comparison that decides
+    whether anything actually changed is made against the same shape that
+    reaches the file — otherwise a stray space would look like an edit and
+    invalidate a confirmation for nothing.
+    """
+    seen: dict[str, dict] = {}
+    for item in products:
+        name = str(item.get("name_cn") or "").strip()
+        if not name or name in seen:
+            continue
+        seen[name] = {"name_cn": name, "name_en": str(item.get("name_en") or "").strip()}
+    return list(seen.values())
+
+
+def save_custom_products(path: Path, products: list[dict]) -> None:
+    write_json(path, {"schema": SCHEMA_CUSTOM_PRODUCTS,
+                      "products": normalize_custom_products(products)})

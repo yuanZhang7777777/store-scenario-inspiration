@@ -512,10 +512,12 @@ class StockTests(unittest.TestCase):
         def ranks(*args):
             if mutate: db.write_text('modified during retrieval')
             return []
-        inventory=patch.object(retrieval,'_inventory',side_effect=failure) if failure else patch.object(retrieval,'_inventory',return_value=('PH','available' if stock is not None else 'unavailable',stock))
+        inventory=patch.object(retrieval,'_inventory',side_effect=failure) if failure else patch.object(retrieval,'_inventory',return_value=('PH','available' if stock is not None else 'unavailable',stock,stock))
         with inventory, patch.object(retrieval,'load_products',return_value={}), patch.object(retrieval,'load_vector_index',return_value=object()), patch.object(retrieval,'load_encoder',return_value=object()), patch.object(retrieval,'_rankings',side_effect=ranks), patch.object(retrieval,'fuse_rankings',return_value=rows()), patch.object(retrieval,'build_fts',side_effect=lambda *a:sqlite3.connect(':memory:')):
+            # The candidates are the document every caller here reads; the per-child
+            # stock that comes back beside it is the export sheet's business.
             return retrieval.retrieve_store(asset_db=db,vector_cache=vec,model_cache=self.base,stock_path=self.stock,
-                                            country='PH',products=[{'scene_name':'s','product_cn':'椅','product_en':'chair'}],params=params)
+                                            country='PH',products=[{'scene_name':'s','product_cn':'椅','product_en':'chair'}],params=params)[0]
 
     def test_unknown_stock_never_satisfies_in_stock_filter(self):
         with self.assertRaises(RuntimeError): self.retrieve(only=True)

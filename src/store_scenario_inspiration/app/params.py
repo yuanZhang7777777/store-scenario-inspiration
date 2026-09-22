@@ -36,7 +36,7 @@ RERANK_PROVIDERS = (RERANK_JEV, RERANK_DEEPSEEK, RERANK_OFF)
 DEFAULTS = {
     "scene_count": 6,
     "products_per_scene": 16,
-    "expansion_terms": 6,
+    "expansion_terms": 0,
     "recall_limit": 30,
     "stock_filter": STOCK_ALL,
     "rerank": RERANK_MARK_ONLY,
@@ -91,8 +91,12 @@ class SearchParams(BaseModel):
         ),
     )
     expansion_terms: int = Field(
-        default=6, ge=0, le=12,
-        description="每个商品在中英文各扩写几个近义词。扩得多召回更全，也更容易拉进隔壁品类。",
+        default=0, ge=0, le=12,
+        description=(
+            "每个商品在中英文各扩写几个近义词。"
+            "0（默认）：就用商品自己的名字去搜，中英文各一个词，不多花一次模型调用。"
+            "调大：搜得更全，也更容易把隔壁品类拉进来。"
+        ),
     )
     recall_limit: int = Field(
         default=30, ge=5, le=200,

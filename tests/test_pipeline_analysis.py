@@ -72,12 +72,12 @@ def serve(monkeypatch, body: dict) -> None:
     monkeypatch.setattr("urllib.request.urlopen", lambda *_args, **_kwargs: Fake())
 
 
-def record(monkeypatch) -> list[dict]:
+def record(monkeypatch, answer: dict | None = None) -> list[dict]:
     """Serve a well-formed answer and keep every payload the module sent.
 
-    The answer carries both scenes and products, so it fits whichever of the
-    three calls is under test; what these tests are about is what went out, not
-    what came back.
+    By default the answer carries both scenes and products, so it fits either of
+    the two calls that produce them; what these tests are about is what went out,
+    not what came back.
     """
     sent: list[dict] = []
 
@@ -90,7 +90,8 @@ def record(monkeypatch) -> list[dict]:
 
         def read(self):
             content = json.dumps(
-                {"model": MODEL, "scenes": [scene()], "products": [product("帐篷"), product("睡袋")]},
+                answer or {"model": MODEL, "scenes": [scene()],
+                           "products": [product("帐篷"), product("睡袋")]},
                 ensure_ascii=False,
             )
             return json.dumps(response(content), ensure_ascii=False).encode("utf-8")
@@ -199,10 +200,32 @@ def test_the_retired_field_is_dropped_rather_than_stored(monkeypatch) -> None:
         **section(actionable_implication="对我们意义"), "priority_order": ["甲", "乙", "丙"]}
     serve(monkeypatch, response(json.dumps(value, ensure_ascii=False)))
 
-    result, _ = analyze_synthesis({"store": {}}, [scene()], "secret-key")
+    result, _ = analyze_synthesis({"store": {}}, "secret-key")
 
     assert result["store_profile"] == {"judgement": "判断", "evidence": "依据"}
     assert "actionable_implication" not in result["future_product_structure"]
+
+
+def test_the_reading_is_written_before_there_is_any_scene_to_summarise(monkeypatch) -> None:
+    """What a store makes its money on is the reason the scenes get written, so
+    the call that decides it cannot be handed the scenes: that would make it a
+    summary of them, which is the ordering this round exists to undo."""
+    sent = record(monkeypatch, answer=synthesis())
+
+    analyze_synthesis({"store": {}}, "secret-key")
+
+    ask = json.loads(sent[0]["messages"][1]["content"])
+    assert "scenes" not in ask
+    assert "store_conclusion" not in ask
+
+
+def test_the_scene_call_is_handed_the_reading_it_builds_on(monkeypatch) -> None:
+    sent = record(monkeypatch)
+
+    analyze_scenes({"store": {}}, "secret-key", scene_count=1, conclusion=synthesis())
+
+    ask = json.loads(sent[0]["messages"][1]["content"])
+    assert ask["store_conclusion"]["current_product_structure"] == section()
 
 
 # ---------- failure the operator has to be able to act on ----------
@@ -333,3 +356,25 @@ def test_expansions_still_cap_each_language_at_the_operators_count(monkeypatch) 
     )
 
     assert result["scenes"][0]["products"][0]["expanded_cn"] == ["a", "b"]
+
+
+def test_asking_for_no_expansions_is_not_a_reason_to_call_the_model(monkeypatch) -> None:
+    """Zero means the search runs on the product's own two names. A call that
+    could only hand back the empty list it was told to produce is money spent to
+    make the search wider than the operator wanted it."""
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("no expansion call should have been made")
+
+    monkeypatch.setattr("urllib.request.urlopen", refuse)
+
+    result, receipt = analyze_expansions(
+        {"scenes": [{"scene_name": "露营",
+                     "products": [{"product_cn": "帐篷", "product_en": "Tent"}]}]},
+        "secret-key", expansion_terms=0,
+    )
+
+    assert result["scenes"][0]["products"][0] == {
+        "product_cn": "帐篷", "product_en": "Tent", "canonical_cn": "帐篷",
+        "canonical_en": "Tent", "expanded_cn": [], "expanded_en": [],
+    }
+    assert receipt["expansion_fallback"]["used"] is False

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import io
-import json
 from pathlib import Path
 from urllib.parse import quote
 
@@ -21,25 +20,31 @@ from ..pipeline.clues import (
     excluded_clues,
     find_purity_violations,
     kept_clues,
+    load_custom_products,
     load_exclusions,
+    normalize_custom_products,
+    save_custom_products,
     save_exclusions,
 )
 
-from ..pipeline.business import normalize_metrics
 from .confirmation import (ANALYSIS_STAGES, ConfirmationRequired, approve_review,
                            invalidate_review, review_details, review_status)
 from ..reliability import StoreLease
 from contextlib import closing
 from .config import Settings
+from ..catalog.pilot import load_children
 from .export import (
+    child_rows,
     deduped_rows,
     notes_for,
-    report_rows,
-    roles_exported,
+    picked_by_sku,
+    scene_blocks,
     summaries,
     workbook,
 )
-from .jobs import STAGE_ORDER, JobManager, run_clues
+from ..pipeline.artifacts import write_json
+from ..pipeline.recognize import drop_receipt_image
+from .jobs import STAGE_ORDER, JobManager, run_clues, run_recognize
 from .params import SearchParams, load_params, save_params
 from .scenes import annotate
 from .stores import Workspace, read_json
@@ -53,6 +58,19 @@ class Exclusions(BaseModel):
     """The whole exclusion list, not a diff: the operator sends what they see."""
 
     excluded: list[str] = Field(default_factory=list)
+
+
+class CustomProduct(BaseModel):
+    """A product the store sells that the screenshots happened not to show."""
+
+    name_cn: str
+    name_en: str = ""
+
+
+class CustomProducts(BaseModel):
+    """The whole list, for the same reason the exclusion list is the whole list."""
+
+    products: list[CustomProduct] = Field(default_factory=list)
 
 
 class RunRequest(BaseModel):
@@ -119,14 +137,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store_name: str = Form(...),
         country: str = Form(...),
         files: list[UploadFile] = File(...),
-        business_metrics: str = Form("{}"),
     ) -> dict:
         if country.strip().upper() not in settings.countries:
             raise HTTPException(400, f"unsupported country: {country!r}")
-        try:
-            metrics = normalize_metrics(json.loads(business_metrics))
-        except (ValueError, TypeError) as error:
-            raise HTTPException(400, str(error)) from error
         if len(files) > 20:
             raise HTTPException(413, "一次最多上传 20 张图片")
         uploads = []
@@ -144,7 +157,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(400, f"not an image: {upload.filename}")
             uploads.append((upload.filename or "screenshot.png", io.BytesIO(payload)))
         try:
-            return workspace.create(store_name, country, uploads, business_metrics=metrics)
+            return workspace.create(store_name, country, uploads)
         except ValueError as error:
             raise HTTPException(400, str(error)) from error
 
@@ -154,6 +167,67 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/stores/{store_id}")
     def get_store(store_id: str) -> dict:
+        return _store_payload(workspace, jobs, store_id)
+
+    @app.post("/api/stores/{store_id}/images")
+    async def add_images(store_id: str, files: list[UploadFile] = File(...)) -> dict:
+        """Add screenshots to a store that is already open.
+
+        The uploads are saved and the store is handed straight back; reading the
+        new pictures is a job like any other, so it reports progress the same way
+        and only costs the pictures that were added.
+        """
+        workspace.entry(store_id)
+        uploads = []
+        total_bytes = 0
+        for upload in files:
+            payload = await upload.read(settings.max_upload_bytes + 1)
+            total_bytes += len(payload)
+            if total_bytes > min(200 * 1024 * 1024, settings.max_upload_bytes * 20):
+                raise HTTPException(413, "本次上传图片总量过大，请减少图片后重试")
+            if not payload:
+                raise HTTPException(400, f"empty upload: {upload.filename}")
+            if len(payload) > settings.max_upload_bytes:
+                raise HTTPException(413, f"too large: {upload.filename}")
+            if not (upload.content_type or "").startswith("image/"):
+                raise HTTPException(400, f"not an image: {upload.filename}")
+            uploads.append((upload.filename or "screenshot.png", io.BytesIO(payload)))
+        try:
+            with closing(StoreLease(workspace.path(store_id, ".pipeline.lock"))):
+                added = workspace.add_images(store_id, uploads)
+                # The store now lists a picture nothing has read, so the reading
+                # that was on disk is no longer a reading of this store.
+                invalidate_review(workspace.dir(store_id))
+        except (ValueError, RuntimeError) as error:
+            raise HTTPException(409, str(error)) from error
+        return {"added": [image["filename"] for image in added],
+                "store": _store_payload(workspace, jobs, store_id)}
+
+    @app.delete("/api/stores/{store_id}/images/{filename}")
+    def remove_image(store_id: str, filename: str) -> dict:
+        """Drop one screenshot and everything only it showed.
+
+        Local and free: what the other pictures contained is unchanged by taking
+        this one away, so the products recognised from it are the only ones that
+        go, and the operator's exclusions are left alone.
+        """
+        try:
+            with closing(StoreLease(workspace.path(store_id, ".pipeline.lock"))):
+                workspace.remove_image(store_id, filename)
+                base = workspace.dir(store_id)
+                invalidate_review(base)
+                # Only when there was a reading to prune. On a store nobody has
+                # read yet there is nothing to take out, and re-deriving would
+                # send the remaining pictures to the model on the way past.
+                if (base / "deepseek_vision.json").is_file():
+                    write_json(base / "deepseek_vision.json",
+                               drop_receipt_image(read_json(base / "deepseek_vision.json"),
+                                                  Path(filename).name))
+                    params = load_params(workspace.path(store_id, "params.json"))
+                    run_recognize(workspace, settings, store_id, params)
+                    run_clues(workspace, settings, store_id, params)
+        except (ValueError, RuntimeError) as error:
+            raise HTTPException(409, str(error)) from error
         return _store_payload(workspace, jobs, store_id)
 
     @app.get("/api/stores/{store_id}/images/{filename}")
@@ -191,6 +265,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         path = workspace.path(store_id, "exclusions.json")
         review["excluded"] = sorted(load_exclusions(path))
         review["exclusions_saved"] = path.is_file()
+        review["custom"] = load_custom_products(workspace.path(store_id, "custom_products.json"))
         return review
 
     @app.put("/api/stores/{store_id}/clues")
@@ -212,6 +287,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     invalidate_review(workspace.dir(store_id))
                 save_exclusions(workspace.path(store_id, "exclusions.json"), body.excluded)
                 run_clues(workspace, settings, store_id, load_params(workspace.path(store_id, "params.json")))
+        except (ValueError, RuntimeError) as error:
+            raise HTTPException(409, str(error)) from error
+        return get_clues(store_id)
+
+    @app.put("/api/stores/{store_id}/products")
+    def put_products(store_id: str, body: CustomProducts) -> dict:
+        """Record the products the operator added by hand, then rebuild the list.
+
+        Same shape as the exclusion list and for the same reason: the operator
+        sends the whole list they are looking at, so there is no diff to end up
+        out of step with the screen. Rebuilding is local and free, so the next
+        scene generation sees the addition without a second DeepSeek call.
+        """
+        review = _require(workspace, store_id, "clues.json")
+        for item in body.products:
+            if not item.name_cn.strip():
+                raise HTTPException(400, "商品中文名不能为空。")
+        try:
+            with closing(StoreLease(workspace.path(store_id, ".pipeline.lock"))):
+                previous = load_custom_products(workspace.path(store_id, "custom_products.json"))
+                written = [item.model_dump() for item in body.products]
+                if normalize_custom_products(previous) != normalize_custom_products(written):
+                    invalidate_review(workspace.dir(store_id))
+                save_custom_products(workspace.path(store_id, "custom_products.json"), written)
+                run_clues(workspace, settings, store_id,
+                          load_params(workspace.path(store_id, "params.json")))
         except (ValueError, RuntimeError) as error:
             raise HTTPException(409, str(error)) from error
         return get_clues(store_id)
@@ -291,25 +392,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         nothing else: names, ranks and stock all come off disk.
 
         The same SKU picked under several roles is one product, and the operator
-        decides which list they want: the report repeats it once per role, the
+        decides which list they want: the board repeats it once per scene, the
         buy-list keeps it once and says where it was used.
+
+        The children and their names are read from the catalogue, which holds
+        every child a product has; the quantities come from the snapshot this
+        run was bound to, so the sheet and the candidates agree.
         """
         retrieval = _require(workspace, store_id, "retrieval.json")
         analysis = _require(workspace, store_id, "deepseek_analysis.json")
+        # The per-child quantities are written by the same pass that wrote the
+        # candidates, so a run from before that existed has none. Re-running the
+        # recall is local and free; a 货号 with no children would not be.
+        children_path = workspace.path(store_id, "stock_children.json")
+        if not children_path.is_file():
+            raise HTTPException(409, "这次结果里没有子款库存明细，请重新执行「找商品」后再导出。")
+        children = read_json(children_path)
         entry = workspace.entry(store_id)
         picks = [pick.model_dump() for pick in body.picks]
-        rows = report_rows(analysis, retrieval, picks)
+        picked = picked_by_sku(analysis, retrieval, picks)
+        stock = children.get("quantities") if children.get("available") else None
         notes = notes_for(
             retrieval=retrieval,
             params=load_params(workspace.path(store_id, "params.json")).model_dump(),
             store=entry, store_id=store_id,
-            stock_path=settings.stock, exported=roles_exported(rows),
+            stock_path=settings.stock, exported=len(picked),
         )
         name = f"{entry.get('store_name') or store_id}-店铺场景报告.xlsx"
         return Response(
-            content=workbook(rows, summaries(analysis, entry, retrieval.get("country") or ""),
-                             notes,
-                             deduped_rows(analysis, retrieval, picks) if body.dedupe else None),
+            content=workbook(scene_blocks(analysis, retrieval, picks),
+                             summaries(analysis, entry, retrieval.get("country") or ""),
+                             notes, country=retrieval.get("country") or "",
+                             children=child_rows(
+                                 picked, load_children(settings.asset_db, picked), stock),
+                             deduped=deduped_rows(picked) if body.dedupe else None),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"},
         )
@@ -327,11 +443,16 @@ def _require(workspace: Workspace, store_id: str, name: str) -> dict:
 def _store_payload(workspace: Workspace, jobs: JobManager, store_id: str) -> dict:
     entry = workspace.entry(store_id)
     clues_path = workspace.path(store_id, "clues.json")
+    params = load_params(workspace.path(store_id, "params.json"))
     return {
         "id": store_id,
         "store": entry,
         "stages": workspace.stages(store_id),
-        "params": load_params(workspace.path(store_id, "params.json")).model_dump(),
+        "params": params.model_dump(),
+        # What the page turns into a single button: the steps that no longer
+        # describe this store, so the operator answers "what changed" by having
+        # changed it rather than by knowing the pipeline.
+        "outdated": workspace.outdated(store_id, params.model_dump()),
         "kept_clues": kept_clues(read_json(clues_path)) if clues_path.is_file() else [],
         "excluded_clues": excluded_clues(read_json(clues_path)) if clues_path.is_file() else [],
         "job": jobs.newest(store_id),

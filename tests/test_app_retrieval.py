@@ -96,6 +96,8 @@ def run(asset_db, tmp_path, monkeypatch):
     def call(**overrides):
         params = SearchParams(**{"scene_count": 8, "products_per_scene": 10,
                                  "expansion_terms": 6, "recall_limit": 30, **overrides})
+        # The candidates; the per-child stock that comes back beside them is what
+        # the exported sheet reads and has its own tests.
         return retrieve_store(
             asset_db=asset_db,
             vector_cache=tmp_path / "vectors.sqlite3",
@@ -104,7 +106,7 @@ def run(asset_db, tmp_path, monkeypatch):
             country="PH",
             products=flatten_expansions(EXPANSIONS),
             params=params,
-        )
+        )[0]
     return call
 
 
@@ -188,7 +190,25 @@ def _with_stock(asset_db, tmp_path, monkeypatch, stock, **overrides):
         asset_db=asset_db, vector_cache=tmp_path / "v.sqlite3", model_cache=tmp_path / "m",
         stock_path=stock, country="PH", products=flatten_expansions(EXPANSIONS),
         params=SearchParams(recall_limit=30, **overrides),
+    )[0]
+
+
+def test_the_run_freezes_the_child_stock_the_sheet_will_print(
+    asset_db, tmp_path, monkeypatch, stock,
+) -> None:
+    """The export must not re-read whatever stock file is configured when the
+    operator happens to click 导出: the numbers belong to the snapshot this
+    recall was built from, and the children they hang off are worth keeping."""
+    monkeypatch.setattr(retrieval_module, "load_vector_index", lambda _: FakeIndex())
+    monkeypatch.setattr(retrieval_module, "load_encoder", lambda _: FakeEncoder())
+    _, children = retrieve_store(
+        asset_db=asset_db, vector_cache=tmp_path / "v.sqlite3", model_cache=tmp_path / "m",
+        stock_path=stock, country="PH", products=flatten_expansions(EXPANSIONS),
+        params=SearchParams(recall_limit=30),
     )
+
+    assert children == {"schema": "store-stock-children-v1", "country": "PH",
+                        "available": True, "quantities": {"B-1": 4.0}}
 
 
 def test_looking_at_everything_keeps_the_whole_list_and_marks_availability(

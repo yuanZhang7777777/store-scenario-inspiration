@@ -13,6 +13,7 @@ import os
 import sqlite3
 import sys
 from collections import defaultdict
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from time import perf_counter
 from urllib.error import HTTPError, URLError
@@ -223,12 +224,37 @@ def _number(value: object, row_number: int, field: str) -> float:
     return result
 
 
-def load_country_stock(path: Path, country: str, allowed_children: dict[str, str]) -> dict[str, float]:
-    country_code = COUNTRIES.get(country.strip().upper(), COUNTRIES.get(country.strip()))
-    if country_code is None:
+def country_code(country: str) -> str | None:
+    """The two-letter code, whether the caller wrote "泰国" or "TH"."""
+    raw = country.strip()
+    return COUNTRIES.get(raw.upper(), COUNTRIES.get(raw))
+
+
+# How many disagreeing rows the note names before it stops and counts the rest.
+SKIPPED_ROWS_SHOWN = 5
+
+
+def stock_rows(
+    path: Path, country: str, allowed_children: dict[str, str],
+    disagreeing: list[tuple[int, str, str, str]] | None = None,
+) -> Iterator[tuple[str, str, float]]:
+    """Each in-country stock row that maps to a known child, as main, child, quantity.
+
+    One pass over the workbook, so the caller decides what to fold it into: the
+    recall needs totals per main SKU, and the exported sub-SKU sheet needs the
+    same quantities kept by the child the goods are actually in. Rows whose child
+    the catalogue does not know, or that belong to another country, are dropped
+    rather than guessed at.
+
+    A row whose 主SKU column contradicts the catalogue's own mapping is dropped
+    too, and handed to ``disagreeing`` so the caller can say so. Refusing to run
+    would mean one bad line in a 200,000-line export costs a whole pass, and the
+    operator has no way to fix a file they cannot see the fault in.
+    """
+    code = country_code(country)
+    if code is None:
         raise ValueError(f"unsupported country: {country!r}")
     workbook = load_workbook(path, read_only=True, data_only=True)
-    totals: defaultdict[str, float] = defaultdict(float)
     try:
         sheet = workbook["汇总表格"]
         sheet.reset_dimensions()
@@ -245,29 +271,130 @@ def load_country_stock(path: Path, country: str, allowed_children: dict[str, str
             if expected_main_sku is None:
                 continue
             if main_sku != expected_main_sku:
-                raise ValueError(
-                    f"stock row {row_number}: {child_sku} maps to {expected_main_sku}, not {main_sku}"
-                )
-            raw_country = str(row[positions["国家"]] or "").strip()
-            row_country = COUNTRIES.get(raw_country.upper(), COUNTRIES.get(raw_country))
-            if row_country != country_code:
+                if disagreeing is not None:
+                    disagreeing.append((row_number, child_sku, main_sku, expected_main_sku))
                 continue
-            totals[main_sku] += _number(
+            raw_country = str(row[positions["国家"]] or "").strip()
+            if COUNTRIES.get(raw_country.upper(), COUNTRIES.get(raw_country)) != code:
+                continue
+            yield main_sku, child_sku, _number(
                 row[positions["库存中心库存"]], row_number, "库存中心库存"
             ) + _number(row[positions["公共池库存"]], row_number, "公共池库存")
     finally:
         workbook.close()
-    return dict(totals)
+
+
+def read_country_stock(
+    path: Path, country: str, allowed_children: dict[str, str],
+    notes: list[str] | None = None,
+) -> tuple[dict[str, float], dict[str, float]]:
+    """Country stock by main SKU and by child SKU, out of the one read.
+
+    The second map keeps only what this country can actually ship, because a
+    child with no row or a row summing to nothing means the same thing to
+    whoever has to pick one.
+    """
+    by_main: defaultdict[str, float] = defaultdict(float)
+    by_child: defaultdict[str, float] = defaultdict(float)
+    disagreeing: list[tuple[int, str, str, str]] = []
+    for main_sku, child_sku, quantity in stock_rows(path, country, allowed_children, disagreeing):
+        by_main[main_sku] += quantity
+        if quantity > 0:
+            by_child[child_sku] += quantity
+    if notes is not None:
+        notes.extend(_disagreement_note(disagreeing))
+    return dict(by_main), dict(by_child)
+
+
+def _disagreement_note(disagreeing: list[tuple[int, str, str, str]]) -> list[str]:
+    """Name the rows the two files disagree about, without pasting in hundreds.
+
+    A systematic mapping error would otherwise write one line per row into a
+    field the operator reads on the page, and bury the number that says how
+    widespread the damage is.
+    """
+    if not disagreeing:
+        return []
+    lines = [f"库存文件里有 {len(disagreeing)} 行与产品库的子款归属对不上，这些行已跳过："]
+    lines += [f"第 {number} 行 {child}：产品库里挂在 {expected} 下，文件里记的是 {claimed}。"
+              for number, child, claimed, expected in disagreeing[:SKIPPED_ROWS_SHOWN]]
+    if len(disagreeing) > SKIPPED_ROWS_SHOWN:
+        lines.append(f"其余 {len(disagreeing) - SKIPPED_ROWS_SHOWN} 行同样跳过。")
+    return lines
+
+
+def load_country_stock(path: Path, country: str, allowed_children: dict[str, str]) -> dict[str, float]:
+    return read_country_stock(path, country, allowed_children)[0]
 
 
 def load_inventory_context(
     path: Path, country: str, allowed_children: dict[str, str]
 ) -> tuple[str, str, dict[str, float] | None]:
     raw = country.strip()
-    country_code = COUNTRIES.get(raw.upper(), COUNTRIES.get(raw))
-    if country_code is None:
+    code = country_code(raw)
+    if code is None:
         return raw.upper(), "unavailable", None
-    return country_code, "available", load_country_stock(path, country_code, allowed_children)
+    return code, "available", load_country_stock(path, code, allowed_children)
+
+
+def load_children(asset_db: Path, main_skus: Iterable[str]) -> dict[str, list[tuple[str, str]]]:
+    """Each main SKU's children, with the name the catalogue holds for them.
+
+    Read from the catalogue and not from the stock workbook: the workbook only
+    knows the children that appear in it, and the sheet has to list every child
+    the product has, including the ones this country cannot ship.
+    """
+    wanted = sorted({str(sku) for sku in main_skus})
+    children: dict[str, list[tuple[str, str]]] = {sku: [] for sku in wanted}
+    if not wanted:
+        return children
+    connection = sqlite3.connect(f"file:{Path(asset_db).as_posix()}?mode=ro", uri=True)
+    connection.row_factory = sqlite3.Row
+    try:
+        for start in range(0, len(wanted), 500):
+            batch = wanted[start:start + 500]
+            rows = connection.execute(
+                f"SELECT main_sku, inventory_metadata_json, raw_evidence_json FROM products "
+                f"WHERE active=1 AND indexable=1 AND main_sku IN ({','.join('?' * len(batch))})",
+                batch,
+            ).fetchall()
+            for row in rows:
+                names = _child_names(row["raw_evidence_json"])
+                for child in _metadata_children(row["inventory_metadata_json"]):
+                    children[row["main_sku"]].append((child, names.get(child, "")))
+    finally:
+        connection.close()
+    return children
+
+
+def _metadata_children(value: object) -> list[str]:
+    try:
+        child_skus = json.loads(str(value))["child_skus"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return []
+    if not isinstance(child_skus, list):
+        return []
+    return [str(child).strip() for child in child_skus if str(child).strip()]
+
+
+def _child_names(value: object) -> dict[str, str]:
+    """The child's own product name, off the row the catalogue was built from."""
+    try:
+        records = json.loads(str(value))
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    if not isinstance(records, list):
+        return {}
+    names: dict[str, str] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        raw = record.get("raw")
+        child = str(record.get("child_sku") or "").strip()
+        name = str(raw.get("商品名称") or "").strip() if isinstance(raw, dict) else ""
+        if child and name and child not in names:
+            names[child] = name
+    return names
 
 
 def filter_country(

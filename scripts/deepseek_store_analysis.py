@@ -25,22 +25,30 @@ from store_scenario_inspiration.pipeline.analysis import (
 def run_analysis(source: dict, key: str, *, scene_count: int, products_per_scene: int) -> tuple[dict, dict]:
     """The same three calls the app makes, so both paths pay for the same thing.
 
-    One answer per scene keeps each call small, and the conclusions are written
-    last because they need every scene at once.
+    The conclusions come first, because the scenes are written from them. One
+    answer per scene keeps each call small, so no single answer can lose the
+    whole store.
     """
-    scenes, _ = analyze_scenes(source, key, scene_count=scene_count)
+    synthesis, receipt = analyze_synthesis(source, key)
+    scenes, scene_receipt = analyze_scenes(
+        source, key, scene_count=scene_count, conclusion=synthesis)
     frames = []
     for scene in scenes["scenes"]:
-        result, _ = analyze_scene_products(
+        result, product_receipt = analyze_scene_products(
             source, scene, key, products_per_scene=products_per_scene)
         frames.append({"scene_name": scene["scene_name"], "products": result["products"]})
-    synthesis, receipt = analyze_synthesis(
-        source,
-        [{**scene, "product_needs": frame["products"]}
-         for scene, frame in zip(scenes["scenes"], frames)],
-        key,
-    )
-    return assemble(scenes, frames, synthesis), receipt
+        receipt = _add_usage(receipt, product_receipt)
+    return assemble(scenes, frames, synthesis), _add_usage(receipt, scene_receipt)
+
+
+def _add_usage(receipt: dict, other: dict) -> dict:
+    """One receipt for the whole run, so the printed spend is the run's spend."""
+    total = dict(receipt)
+    usage = dict(total.get("usage") or {})
+    for field, value in (other.get("usage") or {}).items():
+        usage[field] = usage.get(field, 0) + value if isinstance(value, int) else value
+    total["usage"] = usage
+    return total
 
 
 def main() -> None:

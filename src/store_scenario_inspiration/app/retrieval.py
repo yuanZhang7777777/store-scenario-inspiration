@@ -27,9 +27,10 @@ from store_scenario_inspiration.catalog.bilingual_vectors import (
 )
 from store_scenario_inspiration.catalog.pilot import (
     build_fts,
+    country_code,
     fuse_rankings,
     keyword_search,
-    load_inventory_context,
+    read_country_stock,
 )
 
 from .params import STOCK_IN_ONLY, SearchParams
@@ -39,6 +40,7 @@ from store_scenario_inspiration.reliability import file_signature, stock_snapsho
 
 
 SCHEMA_RETRIEVAL = "store-retrieval-v1"
+SCHEMA_STOCK_CHILDREN = "store-stock-children-v1"
 
 CHANNEL_LIMIT = 100
 GLOBAL_LIMIT = 400
@@ -114,11 +116,26 @@ def _child_to_main(catalogue: dict[str, dict]) -> dict[str, str]:
     return mapping
 
 
-def _inventory(stock_path: Path, country: str, catalogue: dict[str, dict]):
-    """Country stock, or an explicit "not checked" when there is nothing to read."""
+def _inventory(stock_path: Path, country: str, catalogue: dict[str, dict],
+               warnings: list[str]):
+    """Country stock, or an explicit "not checked" when there is nothing to read.
+
+    Both halves of the answer come off one pass over the workbook: the recall
+    needs totals per main SKU, and the sub-SKU sheet the operator exports needs
+    the same quantities kept by the child the goods are actually in.
+
+    Rows the workbook and the catalogue disagree about are reported through
+    ``warnings`` and left out of the totals, rather than throwing away the whole
+    read: the rows that do agree are still the ones the operator will pick from.
+    """
     if not Path(stock_path).is_file():
-        return country.strip().upper(), "unavailable", None
-    return load_inventory_context(Path(stock_path), country, _child_to_main(catalogue))
+        return country.strip().upper(), "unavailable", None, None
+    code = country_code(country)
+    if code is None:
+        return country.strip().upper(), "unavailable", None, None
+    by_main, by_child = read_country_stock(
+        Path(stock_path), code, _child_to_main(catalogue), warnings)
+    return code, "available", by_main, by_child
 
 
 def _annotate(fused: list[dict], stock: dict[str, float] | None) -> None:
@@ -135,8 +152,14 @@ def _annotate(fused: list[dict], stock: dict[str, float] | None) -> None:
 
 
 def retrieve_store(*, asset_db: Path, vector_cache: Path, model_cache: Path,
-                   stock_path: Path, country: str, products: list[dict], params: SearchParams) -> dict:
-    """Preserve the four-channel policy, adding source consistency and explicit fallback."""
+                   stock_path: Path, country: str, products: list[dict],
+                   params: SearchParams) -> tuple[dict, dict]:
+    """Preserve the four-channel policy, adding source consistency and explicit fallback.
+
+    Two documents come back, because they answer different questions for
+    different readers: the candidate list the browser renders, and the country's
+    per-child stock, which nothing but the exported spreadsheet ever reads.
+    """
     if not products:
         raise ValueError('没有可匹配的商品需求，请先完成场景商品分析。')
     asset_revision, vector_revision = file_signature(asset_db), file_signature(vector_cache)
@@ -147,11 +170,11 @@ def retrieve_store(*, asset_db: Path, vector_cache: Path, model_cache: Path,
     warnings, snapshot = [], None
     try:
         snapshot = stock_snapshot(stock_path)
-        country_code, coverage, stock = _inventory(stock_path, country, catalogue)
+        code, coverage, stock, children = _inventory(stock_path, country, catalogue, warnings)
     except DataChangedError:
         raise
     except (OSError, ValueError, KeyError, TypeError, BadZipFile) as exc:
-        country_code, coverage, stock = country.strip().upper(), 'unavailable', None
+        code, coverage, stock, children = country.strip().upper(), 'unavailable', None, None
         warnings.append('库存未能核验，候选保留为待确认；错误类型：' + type(exc).__name__)
     if file_signature(stock_path) != stock_revision:
         raise DataChangedError('库存读取过程中发生更新，请在更新完成后重试。')
@@ -180,7 +203,10 @@ def retrieve_store(*, asset_db: Path, vector_cache: Path, model_cache: Path,
     if (file_signature(asset_db) != asset_revision or file_signature(vector_cache) != vector_revision
             or file_signature(stock_path) != stock_revision):
         raise DataChangedError('分析期间商品或库存数据已更新，本次未发布混合版本结果，请重新匹配。')
-    return {'schema': SCHEMA_RETRIEVAL, 'country': country_code, 'inventory': coverage,
-            'inventory_snapshot': snapshot if stock is not None else None,
-            'source_revisions': {'catalogue': asset_revision, 'vectors': vector_revision},
-            'warnings': warnings, 'scenes': scenes}
+    result = {'schema': SCHEMA_RETRIEVAL, 'country': code, 'inventory': coverage,
+              'inventory_snapshot': snapshot if stock is not None else None,
+              'source_revisions': {'catalogue': asset_revision, 'vectors': vector_revision},
+              'warnings': warnings, 'scenes': scenes}
+    stock_children = {'schema': SCHEMA_STOCK_CHILDREN, 'country': code,
+                      'available': stock is not None, 'quantities': children or {}}
+    return result, stock_children

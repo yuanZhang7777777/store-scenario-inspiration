@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import sys
-import pytest
 
 try:
     from store_scenario_inspiration.pipeline import business
@@ -21,43 +20,6 @@ def row(**kwargs):
     return {'product_name': '电视底座', 'orders': 25, 'units_sold': 30,
             'gmv': 300.25, 'currency': 'PHP', 'period_text': '近30天',
             'raw_text': '订单数 25，销量 30，成交额 ₱300.25，近30天', **kwargs}
-
-
-def test_missing_values_do_not_become_zero():
-    result = business.normalize_metrics({})
-    assert result == dict(ado=None, adg=None, currency=None, period_start=None, period_end=None)
-
-
-def test_zero_is_preserved():
-    result = business.normalize_metrics({'ado': 0, 'adg': 0})
-    assert result['ado'] == 0 and result['adg'] == 0
-
-
-@pytest.mark.parametrize('value', [True, False, '12', '1,234', -1, float('nan'), float('inf'), [], {}])
-def test_invalid_metrics_rejected(value):
-    with pytest.raises(ValueError):
-        business.normalize_metrics({'ado': value})
-
-
-@pytest.mark.parametrize('value', [0, 0.5, 125, 253.25])
-def test_valid_daily_values(value):
-    assert business.normalize_metrics({'ado': value})['ado'] == value
-
-
-def test_currency_and_period():
-    assert business.normalize_metrics({'currency': 'php', 'period_start': '2026-09-01', 'period_end': '2026-09-21'})['currency'] == 'PHP'
-
-
-@pytest.mark.parametrize('values', [
-    {'period_start': '2026-09-01'}, {'period_end': '2026-09-21'},
-    {'period_start': '2026-09-22', 'period_end': '2026-09-21'},
-    {'period_start': '2026-02-30', 'period_end': '2026-03-02'},
-    {'period_start': '20260901', 'period_end': '20260921'},
-    {'currency': '₱'}, {'currency': 'P1P'}, {'unknown': 1},
-])
-def test_bad_metadata_rejected(values):
-    with pytest.raises(ValueError):
-        business.normalize_metrics(values)
 
 
 def test_valid_sales_preserve_metric_meanings():
@@ -118,13 +80,13 @@ def test_different_screenshots_not_merged_or_summed():
         {'filename': 'b.png', 'sales_rows': [row()]},
     ]})
     assert len(context['sales_rows']) == 2
-    assert context['store_metrics']['ado'] is None
     assert 'total_orders' not in context
+    assert 'store_metrics' not in context
 
 
-def test_no_reporting_period_fabricated_from_manual_period():
-    context = business.build_business_context({'business_metrics': {'period_start': '2026-09-01', 'period_end': '2026-09-21'}},
-        {'images': [{'filename': 'x.png', 'sales_rows': [row(period_text=None)]}]})
+def test_no_reporting_period_invented_from_anything_but_the_row():
+    context = business.build_business_context(
+        {}, {'images': [{'filename': 'x.png', 'sales_rows': [row(period_text=None)]}]})
     assert context['sales_rows'][0]['period_text'] is None
 
 
@@ -133,20 +95,14 @@ def test_same_name_different_ids_not_merged():
     assert len(rows) == 2
 
 
-def test_no_data_status_is_explicit():
-    context = business.build_business_context({'business_metrics': business.normalize_metrics({})}, {'images': []})
-    assert context['metric_source'] == 'not_provided'
+def test_the_context_carries_no_store_level_metrics():
+    """There is no whole-store ADO/ADG to read, so the context must not imply one.
 
-
-def test_manual_metrics_passthrough():
-    context = business.build_business_context({'business_metrics': {'ado': 12.5, 'adg': 1234, 'currency': 'PHP'}}, {'images': []})
-    assert context['store_metrics']['ado'] == 12.5
-    assert context['metric_source'] == 'operator_input'
-
-
-def test_invalid_historical_metrics_warn_without_inventing_numbers():
-    context = business.build_business_context({'business_metrics': {'ado': '1,200'}}, {'images': []})
-    assert context['store_metrics']['ado'] is None and context['warnings']
+    The only numbers here are per-product observations from screenshots; a key
+    named like a store total would invite a manager to treat them as one.
+    """
+    context = business.build_business_context({}, {'images': [{'filename': 'a.png', 'sales_rows': [row()]}]})
+    assert set(context) == {'schema', 'sales_rows', 'scope', 'warnings', 'limitations'}
 
 
 def test_excluded_product_cannot_become_sales_priority():

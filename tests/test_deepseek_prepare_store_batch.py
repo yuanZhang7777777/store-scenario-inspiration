@@ -18,8 +18,9 @@ from store_scenario_inspiration.pipeline.recognize import (
 )
 
 
-def product(name: str, role: str, confidence: float) -> dict:
-    return {"name": name, "role": role, "confidence": confidence, "evidence": f"{name} 的判断依据"}
+def product(name: str, role: str, confidence: float, original: str = "") -> dict:
+    return {"name_cn": name, "name_en": original, "role": role, "confidence": confidence,
+            "evidence": f"{name} 的判断依据"}
 
 
 def one_image(products: list[dict], filename: str = "one.png") -> dict:
@@ -48,6 +49,54 @@ def test_recognition_result_becomes_product_clues(tmp_path) -> None:
     assert [item["clue"] for item in clues] == ["折叠椅", "遮阳伞"]
     assert [item["role"] for item in clues] == ["商品卡片主图", "场景中偶然出现"]
     assert [item["confidence"] for item in clues] == [0.9, 0.5]
+
+
+def test_the_listing_wording_rides_along_with_the_chinese_name(tmp_path) -> None:
+    """The name is what everything downstream reads; the wording is the audit trail.
+
+    A store's screenshots are in the language of its marketplace, so the vision
+    pass translates. Keeping what the screenshot actually said lets the operator
+    match a clue back to the picture it came from.
+    """
+    image = tmp_path / "one.png"
+    image.write_bytes(b"not read by this test")
+    entry = {
+        "source_row": 7, "store_name": "Tiktok-20005PH", "country": "PH",
+        "images": [{"filename": "one.png", "local_path": str(image)}],
+    }
+    result = validate_result(one_image([
+        product("自动折叠伞", "商品卡片主图", 0.9, original="80 Ribs Automatic Umbrella"),
+        product("马克杯", "商品卡片主图", 0.9),
+    ]), ["one.png"])
+
+    clues = build_sample(entry, result, tmp_path / "stores.json")["observed_product_clues"]
+
+    assert [item["clue"] for item in clues] == ["自动折叠伞", "马克杯"]
+    assert clues[0]["original"] == "80 Ribs Automatic Umbrella"
+    # Nothing to add when the screenshot was already in Chinese.
+    assert "original" not in clues[1]
+
+
+def test_a_reading_from_before_the_chinese_name_still_loads(tmp_path) -> None:
+    """Older readings on disk carry one ``name``; they are read, not rewritten.
+
+    Every store recognized before this change has one, and adding a screenshot to
+    one of them folds that receipt into the new reading.
+    """
+    image = tmp_path / "one.png"
+    image.write_bytes(b"not read by this test")
+    entry = {
+        "source_row": 7, "store_name": "Shopee-20005PH", "country": "PH",
+        "images": [{"filename": "one.png", "local_path": str(image)}],
+    }
+    legacy = one_image([{"name": "Spin Mop", "role": "商品卡片主图",
+                         "confidence": 0.9, "evidence": "主图"}])
+    validate_result(legacy, ["one.png"])  # a stored receipt is still valid
+
+    clues = build_sample(entry, legacy, tmp_path / "stores.json")["observed_product_clues"]
+
+    assert [item["clue"] for item in clues] == ["Spin Mop"]
+    assert "original" not in clues[0]
 
 
 def test_merged_clue_is_split_into_atomic_products(tmp_path) -> None:
@@ -169,7 +218,7 @@ def test_recognition_receipt_keeps_usage_without_request_secrets(tmp_path, monke
     result, receipt = recognize(entry, "secret-key")
     serialized = json.dumps(receipt, ensure_ascii=False)
 
-    assert result["images"][0]["products"][0]["name"] == "折叠椅"
+    assert result["images"][0]["products"][0]["name_cn"] == "折叠椅"
     assert result["images"][0]["products"][0]["role"] == "商品卡片主图"
     assert receipt["usage"]["total_tokens"] == 15
     assert receipt["response_id"] == "chat-123"

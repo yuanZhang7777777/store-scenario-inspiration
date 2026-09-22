@@ -5,10 +5,12 @@ they cannot run inside a request. Progress is plain polled state rather than a
 stream: with this few stages a two-second poll reads the same to the operator
 and keeps the client free of reconnect logic.
 
-The store reading is three stages rather than one — scenes, then one call per
-scene for its products, then the conclusions — because a single answer holding
-every scene and every product made any one bad character lose the whole store,
-and left the writing thinner the further into it the model got.
+The store reading is three stages rather than one — the conclusions, then the
+scenes, then one call per scene for its products — because a single answer
+holding every scene and every product made any one bad character lose the whole
+store, and left the writing thinner the further into it the model got. The
+conclusions come first: which products the store makes its money on is the
+premise the scenes are written from, not something to be reconciled afterwards.
 
 The local stages sit after the paid ones on purpose. Excluding a product or
 turning the recall count up changes nothing the model was asked, so the operator
@@ -33,8 +35,19 @@ from ..pipeline.analysis import (
     assemble,
 )
 from ..pipeline.artifacts import write_json
-from ..pipeline.clues import build_analysis_input, load_exclusions, review_clues
-from ..pipeline.recognize import build_sample, recognize
+from ..pipeline.clues import (
+    build_analysis_input,
+    load_custom_products,
+    load_exclusions,
+    review_clues,
+)
+from ..pipeline.recognize import (
+    build_sample,
+    fold_receipt,
+    receipt_result,
+    recognize,
+    unread_images,
+)
 
 from .params import (
     RERANK_DEEPSEEK,
@@ -49,7 +62,7 @@ from .params import (
 from .rerank import Ask, rerank_store, strip_verdicts
 from .rerank_providers import ask_deepseek, ask_typesafe
 from .retrieval import flatten_expansions, retrieve_store
-from .stores import Workspace, read_json
+from .stores import STAGE_SETTINGS, Workspace, read_json, record_stage_run
 from .confirmation import (ANALYSIS_STAGES, choose_stages, authorize_start, require_confirmation)
 
 from store_scenario_inspiration.reliability import StoreLease, json_digest, atomic_json
@@ -69,21 +82,28 @@ SYNTHESIS = "synthesis"
 EXPAND = "expand"
 RETRIEVAL = "retrieval"
 RERANK = "rerank"
-STAGE_ORDER = (RECOGNIZE, CLUES, SCENES, PRODUCTS, SYNTHESIS, EXPAND, RETRIEVAL, RERANK)
+STAGE_ORDER = (RECOGNIZE, CLUES, SYNTHESIS, SCENES, PRODUCTS, EXPAND, RETRIEVAL, RERANK)
+# Written the way the operator talks, not the way the pipeline is built: these
+# are read on the sidebar and in the log line "开始找商品". Mirrored, by hand, in
+# PIPELINE in frontend/src/pages/StorePage.tsx.
 STAGE_LABELS = {
     RECOGNIZE: "识别截图里的商品",
-    CLUES: "应用排除名单",
+    CLUES: "去掉你排除的商品",
     SCENES: "生成使用场景",
-    PRODUCTS: "为每个场景列商品",
-    SYNTHESIS: "写店铺结论与人群策略",
-    EXPAND: "扩写商品检索词",
-    RETRIEVAL: "召回候选 SKU",
-    RERANK: "给候选标相关 / 不相关",
+    PRODUCTS: "列出每个场景要用的商品",
+    SYNTHESIS: "写店铺结论和人群策略",
+    EXPAND: "补充搜索词",
+    RETRIEVAL: "找商品",
+    RERANK: "帮你复核一遍",
 }
 # The steps that cost money by calling DeepSeek. Rerank is not here because
 # whether it costs anything depends on which model answers: Jev charges only for
 # input, at 4.2e-8 per token, which rounds to nothing, and DeepSeek charges.
 PAID_STAGES = frozenset({RECOGNIZE, SCENES, PRODUCTS, SYNTHESIS, EXPAND})
+# The country's per-child stock, which only the exported sub-SKU sheet reads. It
+# is part of the retrieval stage rather than a stage of its own: it comes off the
+# same snapshot, in the same pass, and is meaningless without it.
+STOCK_CHILDREN_FILE = "stock_children.json"
 RECEIPTS = {
     RECOGNIZE: "deepseek_vision.json",
     SCENES: "receipt_scenes.json",
@@ -266,11 +286,12 @@ class JobManager:
                 self._run_stage(job, stage, params)
                 if stage.status == FAILED:
                     if stage.name == SYNTHESIS:
-                        # run_synthesis has already published an explicitly partial,
-                        # shape-safe analysis. run_expand reads products, not prose.
+                        # The scenes are written from the raw clues when there is no
+                        # conclusion, so a store reading that failed costs the reading,
+                        # not the run. Everything downstream reads products, not prose.
                         with self._lock:
                             job.log.append({'at': now(), 'stage': SYNTHESIS,
-                                            'message': '补充分析未完成，继续匹配商品；可单独重试补充分析。'})
+                                            'message': '店铺结论未完成，场景改从原始商品线索写起；可单独重试这一步。'})
                         continue
                     break
         except Exception as exc:
@@ -309,6 +330,13 @@ class JobManager:
                 job.log.append({"at": stage.finished_at, "stage": stage.name,
                                 "message": f"失败：{stage.error}"})
             return
+        # Written before the lock, and for the stages that read settings only:
+        # what a step ran with is the answer to "is this still current", and a
+        # step that reads nothing would only be recording noise.
+        if stage.name in STAGE_SETTINGS:
+            dump = params.model_dump()
+            record_stage_run(self.workspace.dir(job.store_id), stage.name,
+                             {key: dump.get(key) for key in STAGE_SETTINGS[stage.name]})
         with self._lock:
             stage.status = READY
             stage.detail = detail
@@ -333,20 +361,38 @@ class JobManager:
 
 
 def run_recognize(workspace: Workspace, settings, store_id: str, params: SearchParams) -> str:
+    """Read the screenshots no pass has covered, and fold them into the reading.
+
+    A picture added later costs one picture's worth of tokens, not the whole
+    store's. Removing one costs nothing at all: the removal is applied to the
+    receipt when it happens, so this step can also be reached with nothing left
+    to read and simply re-derives the sample from what is already known.
+    """
     entry = workspace.entry(store_id)
-    result, receipt = recognize(entry, settings.api_key)
     base = workspace.dir(store_id)
-    write_json(base / "deepseek_vision.json", receipt)
+    receipt_path = base / "deepseek_vision.json"
+    previous = read_json(receipt_path) if receipt_path.is_file() else None
+    pending = unread_images(entry, previous)
+    if pending:
+        _result, extra = recognize({**entry, "images": pending}, settings.api_key)
+        previous = extra if previous is None else fold_receipt(entry, previous, extra)
+        write_json(receipt_path, previous)
+    if previous is None or not previous.get("images"):
+        raise ValueError("店铺没有可识别的截图。")
     write_json(base / "sample_store.json",
-               build_sample(entry, result, workspace.path(store_id, "store.json")))
-    return f"识别出 {sum(len(image['products']) for image in result['images'])} 个商品"
+               build_sample(entry, receipt_result(previous), workspace.path(store_id, "store.json")))
+    counted = sum(len(image["products"]) for image in previous["images"])
+    if pending:
+        return f"读了 {len(pending)} 张新截图，共 {counted} 个商品"
+    return f"截图没有变化，沿用已识别的 {counted} 个商品"
 
 
 def run_clues(workspace: Workspace, settings, store_id: str, params: SearchParams) -> str:
     base = workspace.dir(store_id)
     sample = read_json(base / "sample_store.json")
     review = review_clues(sample.get("observed_product_clues") or [],
-                          load_exclusions(base / "exclusions.json"))
+                          load_exclusions(base / "exclusions.json"),
+                          load_custom_products(base / "custom_products.json"))
     write_json(base / "clues.json", review)
     write_json(base / "analysis_input.json", build_analysis_input(sample, review))
     counts = review["counts"]
@@ -369,7 +415,7 @@ def run_scenes(workspace: Workspace, settings, store_id: str, params: SearchPara
     base = workspace.dir(store_id)
     result, receipt = analyze_scenes(
         read_json(base / "analysis_input.json"), settings.api_key,
-        scene_count=params.scene_count, **sampling(params),
+        scene_count=params.scene_count, conclusion=_conclusion(base), **sampling(params),
     )
     write_json(base / "deepseek_scenes.json", result)
     write_json(base / "receipt_scenes.json", receipt)
@@ -454,23 +500,20 @@ def run_products(workspace: Workspace, settings, store_id: str, params: SearchPa
     if manifest['status'] != 'ready':
         raise RuntimeError('部分场景商品未生成完成；已保存成功结果，重试时只处理未完成的场景。')
     frames = _product_frames(base)
-    _publish_partial_analysis(base, skeleton, frames)
+    _publish_analysis(base, skeleton, frames)
     return f"{len(scenes)} 个场景共列出 {sum(len(frame['products']) for frame in frames)} 个商品角色"
 
 
 def run_synthesis(workspace: Workspace, settings, store_id: str, params: SearchParams) -> str:
+    """The store reading, written before any scene exists to be summarised."""
     base = workspace.dir(store_id)
-    scenes, frames = read_json(base / 'deepseek_scenes.json'), _product_frames(base)
-    _publish_partial_analysis(base, scenes, frames)
     synthesis, receipt = analyze_synthesis(
         read_json(base / 'analysis_input.json'),
-        [{**scene, 'product_needs': frame['products']} for scene, frame in zip(scenes['scenes'], frames, strict=True)],
         settings.api_key, **sampling(params))
-    value = assemble(scenes, frames, synthesis)
-    value['analysis_status'] = 'complete'
-    write_json(base / 'deepseek_analysis.json', value)
     write_json(base / 'receipt_analysis.json', receipt)
-    return '已完成店铺补充分析'
+    _write_conclusion(base, synthesis)
+    _publish_analysis(base, *_stored_analysis(base))
+    return '已完成店铺结论与人群策略'
 
 
 def _slug(name: str) -> str:
@@ -555,7 +598,7 @@ def run_expand(workspace: Workspace, settings, store_id: str, params: SearchPara
 def run_retrieval(workspace: Workspace, settings, store_id: str, params: SearchParams) -> str:
     base = workspace.dir(store_id)
     entry = workspace.entry(store_id)
-    result = retrieve_store(
+    result, children = retrieve_store(
         asset_db=settings.asset_db,
         vector_cache=settings.vector_cache,
         model_cache=settings.model_cache,
@@ -565,6 +608,11 @@ def run_retrieval(workspace: Workspace, settings, store_id: str, params: SearchP
         params=params,
     )
     write_json(base / "retrieval.json", result)
+    # Written beside the candidates rather than inside them: the browser never
+    # renders a per-child quantity, and the candidate list is already the one
+    # document every page has to carry. It lives and dies with the recall, since
+    # it is the same snapshot's numbers and means nothing once they are replaced.
+    write_json(base / STOCK_CHILDREN_FILE, children)
     # A fresh recall invalidates the old verdicts; leaving the marker would claim
     # the new list had been judged when it had not.
     (base / "rerank.json").unlink(missing_ok=True)
@@ -656,17 +704,62 @@ def _products_source_digest(base) -> str:
                         'source': read_json(base / 'analysis_input.json')})
 
 
-def _publish_partial_analysis(base, scenes: dict, frames: list[dict]) -> None:
-    # Fallback text describes a processing state, not a fabricated business opinion.
-    notice = '店铺补充分析尚未完成；商品与场景匹配可继续使用。'
-    skeleton = {
-        'manager_summary': {'executive_conclusion': notice, 'business_opportunity': '',
-                            'recommended_actions': [], 'decision_boundary': '请结合匹配结果核验规格、库存和具体子款。'},
-        'store_profile': {'judgement': '待完成补充分析', 'evidence': ''},
-        'current_product_structure': {'judgement': '待完成补充分析', 'evidence': ''},
-        'future_product_structure': {'judgement': '待完成补充分析', 'evidence': '', 'priority_order': []},
-        'audiences': [], 'operation_strategy': [],
-    }
-    value = assemble(scenes, frames, skeleton)
-    value['analysis_status'] = 'partial'
+# The reading the manager's sections are written into. It is kept apart from the
+# assembled document because it is the premises the scenes are written from, and
+# re-writing the conclusions must not mean re-writing the scenes.
+CONCLUSION_FILE = 'deepseek_conclusion.json'
+
+# Stand-in for a store whose sections have not been written. It describes a
+# processing state rather than fabricating a business opinion.
+_EMPTY_CONCLUSION = {
+    'manager_summary': {'executive_conclusion': '店铺结论尚未完成；商品与场景匹配可继续使用。',
+                        'business_opportunity': '', 'recommended_actions': [],
+                        'decision_boundary': '请结合匹配结果核验规格、库存和具体子款。'},
+    'store_profile': {'judgement': '待完成补充分析', 'evidence': ''},
+    'current_product_structure': {'judgement': '待完成补充分析', 'evidence': ''},
+    'future_product_structure': {'judgement': '待完成补充分析', 'evidence': '', 'priority_order': []},
+    'audiences': [], 'operation_strategy': [],
+}
+
+
+def _write_conclusion(base, synthesis: dict) -> None:
+    write_json(base / CONCLUSION_FILE, synthesis)
+
+
+def _conclusion(base) -> dict | None:
+    """The stored reading, or None when this store has not had one written.
+
+    A scene written without one still comes out, from the raw clues the way it
+    used to, so a missing or unreadable file degrades the scenes rather than
+    failing them.
+    """
+    if not (base / CONCLUSION_FILE).is_file():
+        return None
+    try:
+        return read_json(base / CONCLUSION_FILE)
+    except (ValueError, TypeError, OSError):
+        return None
+
+
+def _stored_analysis(base) -> tuple[dict, list[dict]]:
+    """What is already on disk, so re-writing one half of the document keeps the other."""
+    if not (base / 'deepseek_scenes.json').is_file():
+        return {'scenes': []}, []
+    try:
+        frames = _product_frames(base)
+    except (RuntimeError, ValueError, TypeError, KeyError, OSError):
+        frames = []
+    return read_json(base / 'deepseek_scenes.json'), frames
+
+
+def _publish_analysis(base, scenes: dict, frames: list[dict]) -> None:
+    """Write the document the report reads, with as much of it as exists.
+
+    'complete' means a store reading was written; the document also appears while
+    the sections are missing, labelled partial, so that work already paid for
+    stays readable rather than disappearing behind a failure notice.
+    """
+    conclusion = _conclusion(base)
+    value = assemble(scenes, frames, conclusion or _EMPTY_CONCLUSION)
+    value['analysis_status'] = 'complete' if conclusion else 'partial'
     write_json(base / 'deepseek_analysis.json', value)

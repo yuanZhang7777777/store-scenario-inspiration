@@ -8,7 +8,9 @@
 
 ```powershell
 # 后端：FastAPI，监听 127.0.0.1:8000
-uv run uvicorn store_scenario_inspiration.app.main:create_app --factory --port 8000
+# 开发时加 --reload：改完后端代码它会自己重启。不加的话进程还跑着旧代码，
+# 而前端已经按新接口取字段，点开店铺会白屏。
+uv run uvicorn store_scenario_inspiration.app.main:create_app --factory --port 8000 --reload
 
 # 前端：Vite + React，开发端口 5173，/api 由 Vite 代理到 8000，因此不需要配 CORS
 cd frontend

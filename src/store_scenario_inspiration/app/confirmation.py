@@ -13,7 +13,7 @@ from pathlib import Path
 import tempfile
 
 INITIAL_STAGES = ("recognize", "clues")
-ANALYSIS_STAGES = ("scenes", "products", "synthesis", "expand", "retrieval", "rerank")
+ANALYSIS_STAGES = ("synthesis", "scenes", "products", "expand", "retrieval", "rerank")
 SOURCE_FILES = ("store.json", "sample_store.json", "clues.json", "analysis_input.json", "exclusions.json")
 CONFIRMATION_FILE = "review_confirmation.json"
 SCHEMA = "store-review-confirmation-v1"
