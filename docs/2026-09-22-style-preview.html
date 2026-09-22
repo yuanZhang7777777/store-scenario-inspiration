@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>METIS · 一屏跑完整条流程</title>
+<style>
+:root{
+  --paper:#f6f7fa;--white:#fff;--ink:#191a20;--sub:#42454f;--muted:#6d7280;
+  --line:#dfe2ea;--line-soft:#eceef4;
+  --blue:#4f9cf5;--cyan:#3ac9e6;
+  --night:#12131a;
+  --ok:#3f7d57;--warn:#8a6a41;--idle:#5f6a83;
+  --font:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;
+  --serif:Georgia,"Times New Roman",serif;
+  --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.6 var(--font);
+  -webkit-font-smoothing:antialiased;overflow:hidden}
+h1,h2,h3,h4,p,ol,li{margin:0}
+button{font:inherit;cursor:pointer;color:inherit;border:0;background:none}
+button:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
+svg{display:block}
+
+/* ───────────── shell: everything on one screen, nothing scrolls ───────────── */
+.app{height:100vh;height:100dvh;display:grid;grid-template-rows:auto minmax(0,1fr)}
+.topbar{height:66px;background:#fdfdfe;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:16px;padding:0 22px}
+.identity{display:flex;align-items:center;gap:12px}
+.brandmark{width:26px;height:26px;color:#3a4356}
+.brand{font-family:var(--serif);letter-spacing:.16em;font-size:23px}
+.brand-sub{padding-left:20px;margin-left:8px;border-left:1px solid #dde0e7;color:#6d7280;font-size:13px}
+.badge{background:#eef0f4;color:#5f6675;font-size:11.5px;border:1px solid #e0e3e9;
+  padding:4px 9px;border-radius:6px;margin-left:4px}
+.top-actions{margin-left:auto;display:flex;align-items:center;gap:14px}
+
+.main{display:grid;grid-template-columns:252px minmax(0,1fr);min-height:0}
+
+/* ───────────── left rail: the eight steps, live ───────────── */
+.rail{background:#fff;border-right:1px solid var(--line);display:grid;
+  grid-template-rows:auto minmax(0,1fr);min-height:0}
+
+.rail-head{padding:20px 20px 10px}
+.rail-head h2{font-size:14px;font-weight:600;letter-spacing:.01em}
+.steps{list-style:none;padding:4px 12px 12px;overflow:hidden}
+.step{position:relative;display:grid;grid-template-columns:28px minmax(0,1fr);align-items:center;
+  gap:12px;padding:8px 10px 8px 4px;border-radius:10px;transition:background .2s;cursor:pointer}
+.step:hover{background:#f5f7fb}
+.step:not(:last-child):after{content:"";position:absolute;left:18px;top:37px;bottom:-7px;
+  width:1px;background:#e3e7ef;transition:background .35s}
+.dot{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;flex:none;
+  font:11px/1 var(--mono);border:1px solid #d2d8e4;background:#fff;color:#8b95a9;
+  transition:background .3s,color .3s,border-color .3s,box-shadow .3s,transform .3s}
+.dot svg{width:13px;height:13px}
+.lbl{font-size:13.5px;color:#565d6d;transition:color .3s;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.step.done .dot{background:#e9f2ec;border-color:#c2dacb;color:#45805c}
+.step.done .lbl{color:#6b7c73}
+.step.done:after{background:#cde1d5}
+
+.step.now{background:linear-gradient(100deg,#eef5ff,#f9fbff)}
+.step.now .dot{background:linear-gradient(180deg,#63adf8,#3ac9e6);border-color:transparent;
+  color:#0b2f4a;font-weight:700;transform:scale(1.06);
+  box-shadow:0 0 0 5px #4f9cf51c,0 8px 16px -6px #4f9cf5a0}
+.step.now .lbl{color:#1e3a60;font-weight:600}
+.step.now .dot:before{content:"";position:absolute;width:28px;height:28px;border-radius:50%;
+  border:2px solid #4f9cf5;animation:ring 1.6s ease-out infinite}
+@keyframes ring{0%{transform:scale(1);opacity:.7}100%{transform:scale(1.85);opacity:0}}
+
+
+/* ───────────── stage area ───────────── */
+.stage-area{display:grid;grid-template-rows:minmax(0,1fr) auto;min-height:0;padding:16px 18px 16px}
+.board{position:relative;border-radius:18px;overflow:hidden;isolation:isolate;
+  background:var(--night);display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0;
+  box-shadow:0 3px 6px #16203a08,0 26px 50px -32px #16203a4d}
+.board:before{content:"";position:absolute;inset:0;z-index:-1;
+  background:radial-gradient(ellipse at 16% 72%,#4d62902c,transparent 58%),
+             radial-gradient(ellipse at 96% 6%,#54689b28,transparent 66%),
+             linear-gradient(117deg,#1a1f2a,#101218 78%)}
+.board:after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.55;z-index:0;
+  background-image:radial-gradient(#b6cbf03d .7px,transparent .85px);background-size:24px 24px;
+  -webkit-mask-image:radial-gradient(ellipse at 50% 55%,#0009,transparent 76%);
+  mask-image:radial-gradient(ellipse at 50% 55%,#0009,transparent 76%)}
+.sweep{position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:linear-gradient(104deg,transparent 44%,#a9c8ff1f 50%,transparent 56%);
+  background-size:230% 100%;animation:sweep 6.5s linear infinite}
+@keyframes sweep{from{background-position:135% 0}to{background-position:-35% 0}}
+
+.board-head{position:relative;z-index:4;display:flex;align-items:center;justify-content:space-between;
+  gap:16px;padding:18px 26px 0}
+.code{font:11px/1 var(--mono);letter-spacing:.15em;color:#93a0c0}
+
+.board-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
+.wires{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none;overflow:visible}
+
+.cols{position:relative;z-index:2;display:grid;grid-template-columns:1fr 216px 1fr;
+  align-items:center;gap:22px;padding:22px 34px;min-height:0}
+.col{display:grid;gap:13px;align-content:center}
+.col.right{justify-items:end}
+.node{position:relative;display:flex;align-items:center;gap:11px;justify-self:start;max-width:100%;
+  border:1px solid #3f465e;background:#1c1f2b;color:#dfe4f4;border-radius:11px;
+  padding:12px 16px;font-size:13.5px;line-height:1.4;
+  box-shadow:0 7px 18px -9px #000a;animation:enter .45s cubic-bezier(.2,.8,.2,1) both}
+.col.right .node{justify-self:end;background:#242938;border-color:#4d556f}
+.node svg{width:16px;height:16px;color:#93a1c8;flex:none}
+.node em{font-style:normal;font-size:10px;letter-spacing:.08em;color:#9aa5c4;
+  display:block;margin-top:3px;font-family:var(--mono)}
+.node:nth-child(2){animation-delay:.08s}
+.node:nth-child(3){animation-delay:.16s}
+
+.core-wrap{position:relative;display:grid;place-items:center}
+.core-ring{position:absolute;width:190px;height:190px;border-radius:50%;
+  border:1px solid #7f92d43d;animation:breathe 3s ease-in-out infinite}
+.core-ring.b{width:236px;height:236px;border-color:#7f92d41f;animation-delay:.7s}
+.core{position:relative;z-index:3;min-width:150px;padding:20px 18px;border-radius:22px;text-align:center;
+  border:1px solid #6d7391;background:linear-gradient(135deg,#2e3242,#16181f 72%);color:#eef1fb;
+  box-shadow:0 0 0 7px #aebdfd05,0 0 0 8px #aebdfd14,0 20px 44px -14px #000d,
+             inset 0 1px 0 #e5efff10;animation:corePulse 3s ease-in-out infinite}
+@keyframes corePulse{50%{box-shadow:0 0 0 7px #aebdfd0a,0 0 0 10px #aebdfd1f,
+  0 20px 54px -12px #3a4d8c66,inset 0 1px 0 #e5efff14}}
+.core-label{font-size:16px;font-weight:600;letter-spacing:.02em}
+.core-sub{font-size:10px;letter-spacing:.2em;color:#aeb7d6;margin-top:8px;font-family:var(--mono)}
+
+.board-results{position:relative;z-index:2;display:grid;grid-template-columns:236px minmax(0,1fr);
+  gap:70px;align-items:center;padding:20px 40px;min-height:0}
+.board-foot{position:relative;z-index:3;text-align:center;padding:0 34px 22px;display:none}
+.chips{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;min-height:26px}
+.chips span{border:1px solid #3b4257;background:#232735;border-radius:8px;padding:5px 12px;
+  font-size:11.5px;color:#c4cde7;animation:enter .4s both}
+
+.bar{position:absolute;left:0;right:0;bottom:0;height:3px;background:#ffffff0f;z-index:6}
+.bar i{display:block;height:100%;transform-origin:left center;transform:scaleX(0);
+  background:linear-gradient(90deg,#4f9cf5,#3ac9e6);box-shadow:0 0 12px #63adf8cc}
+
+.scene-card{position:relative;z-index:3;padding:20px 20px 16px;border-radius:14px;
+  background:linear-gradient(142deg,#3c465aee,#2b3446ee 42%,#202634);border:1px solid #8b9fc76b;
+  box-shadow:0 20px 38px -18px #000d,inset 0 1px 0 #e5efff0d;animation:enter .5s both}
+.scene-card .kicker{display:flex;justify-content:space-between;font:10px var(--mono);
+  letter-spacing:.14em;color:#b7c3da}
+.scene-card .kicker b{color:#8b9dc0;font-weight:400}
+.scene-card h4{font-size:20px;font-weight:600;color:#f0f4fd;letter-spacing:-.01em;margin:12px 0 7px}
+.scene-card p{font-size:12.5px;line-height:1.85;color:#bcc7dd}
+.scene-card .foot{border-top:1px solid #ffffff14;margin-top:14px;padding-top:11px;font-size:11px;
+  color:#9dafcb;display:flex;align-items:center;gap:7px}
+.scene-card .foot svg{width:13px;height:13px}
+.products{position:relative;z-index:2;display:grid;gap:12px;align-content:center}
+.product{position:relative;display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:14px;
+  align-items:center;padding:13px 17px;border-radius:12px;text-align:left;width:100%;
+  background:linear-gradient(110deg,#2b3446e8,#232c3ddf);border:1px solid #68809f4d;
+  box-shadow:0 7px 18px -10px #000b;transition:border-color .25s,transform .25s,background .25s;
+  animation:enter .45s both}
+.product:hover{transform:translateY(-2px);background:linear-gradient(110deg,#3d4e6c,#33425c);
+  border-color:#a6bee3b0}
+.product:nth-child(2){animation-delay:.08s}
+.product:nth-child(3){animation-delay:.16s}
+.product:nth-child(4){animation-delay:.24s}
+.product .art{width:46px;height:46px;border-radius:10px;display:grid;place-items:center;color:#4d6584;
+  border:1px solid #e6eeff5c;background:linear-gradient(145deg,#eef2fa,#a8b8d3)}
+.product .art svg{width:23px;height:23px}
+.product em{display:block;font-style:normal;font:10px var(--mono);letter-spacing:.1em;
+  color:#a2b4d4;margin-bottom:3px}
+.product strong{display:block;color:#eef3fe;font-size:14.5px;font-weight:600}
+.product small{display:block;color:#b2c1da;font-size:12px;line-height:1.65;margin-top:3px}
+.port{position:absolute;right:-4px;top:50%;margin-top:-4px;width:8px;height:8px;border-radius:50%;
+  background:#c8d9f8;border:2px solid #8398bc}
+.product .port{left:-4px;right:auto;width:7px;height:7px;margin-top:-3px;background:#93abd4;
+  border:1px solid #bccff2}
+
+/* status tags */
+.tag{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;border-radius:7px;
+  padding:4px 10px;background:#f0f2f7;color:var(--idle);white-space:nowrap}
+.tag:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.65}
+.tag.ok{background:#eaf3ed;color:var(--ok)}
+.tag.warn{background:#f8f1e7;color:var(--warn)}
+.tag.off{background:#f1f2f5;color:#7b8291}
+.product .tag{background:#2e3849;color:#b0c0da}
+.product .tag.ok{background:#26382d;color:#9ecdab}
+.product .tag.warn{background:#3d3329;color:#d5b894}
+
+/* ───────────── toolbar under the board ───────────── */
+.toolbar{display:flex;align-items:flex-end;gap:22px;padding:14px 4px 2px}
+.tool-text{min-width:0;flex:1}
+.tool-text .eyebrow{display:flex;align-items:center;gap:9px;font:10px var(--mono);
+  letter-spacing:.17em;color:#8c94a6;margin-bottom:6px}
+.tool-text .eyebrow:before{content:"";width:18px;height:1px;background:#b3bccd}
+.tool-text h3{font-size:21px;font-weight:600;letter-spacing:-.01em}
+.tool-text p{font-size:13px;color:#6b7181;margin-top:4px}
+.tool-actions{display:flex;align-items:center;gap:16px;flex:none;padding-bottom:2px}
+
+/* the proposal: gradient pill + raised circular buttons */
+.pill{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:12px;
+  padding:12px 26px;border-radius:999px;font-size:14px;font-weight:600;color:#0b2f4a;
+  background:linear-gradient(180deg,#63adf8,#3ac9e6);
+  box-shadow:inset 0 1px 0 #ffffffb0,inset 0 -1px 0 #00000014,
+             0 16px 30px -13px #4f9cf599,0 5px 11px -2px #3ac9e666;
+  transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .25s,filter .2s}
+.pill:hover{transform:translateY(-2px);filter:saturate(1.08);
+  box-shadow:inset 0 1px 0 #ffffffb0,inset 0 -1px 0 #00000014,
+             0 22px 40px -15px #4f9cf5bb,0 7px 15px -3px #3ac9e677}
+.pill:active{transform:translateY(0) scale(.985)}
+.pill .arrow{transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+.pill:hover .arrow{transform:translateX(4px)}
+.pill:after{content:"";position:absolute;top:0;bottom:0;width:38px;
+  background:linear-gradient(100deg,transparent,#ffffff70,transparent);
+  transform:translateX(-160%) skewX(-14deg);animation:sheen 4.2s ease-in-out infinite}
+@keyframes sheen{0%,72%{transform:translateX(-160%) skewX(-14deg)}
+  88%,100%{transform:translateX(420%) skewX(-14deg)}}
+
+.orb{position:relative;overflow:hidden;width:52px;height:52px;border-radius:50%;display:grid;
+  place-items:center;color:#5a6274;background:linear-gradient(180deg,#fff,#f5f7fb);
+  box-shadow:inset 0 1px 0 #fff,0 9px 19px -9px #2021273d,0 2px 5px #2021270f,0 0 0 1px #eaecf2;
+  transition:transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .24s,color .22s}
+.orb:hover{transform:translateY(-3px);color:#22354f;
+  box-shadow:inset 0 1px 0 #fff,0 16px 26px -11px #20212752,0 4px 8px #20212714,0 0 0 1px #e3e6ef}
+.orb:active{transform:translateY(0) scale(.94);
+  box-shadow:inset 0 2px 5px #2021271f,0 0 0 1px #e3e6ef}
+.orb svg{width:21px;height:21px;transition:transform .35s cubic-bezier(.2,.8,.2,1)}
+.orb:hover svg{transform:scale(1.12)}
+.orb.active{background:linear-gradient(180deg,#63adf8,#3ac9e6);color:#0b2f4a;
+  box-shadow:inset 0 1px 0 #ffffffb0,0 16px 28px -13px #4f9cf5b0,0 5px 11px -3px #3ac9e65c}
+.orb.spin svg{animation:spin 2.6s linear infinite}
+@keyframes spin{to{transform:rotate(-360deg)}}
+/* click ripple */
+.ripple{position:absolute;border-radius:50%;background:#4f9cf559;transform:scale(0);
+  animation:ripple .55s cubic-bezier(.2,.8,.2,1) forwards;pointer-events:none}
+@keyframes ripple{to{transform:scale(2.6);opacity:0}}
+
+@keyframes breathe{50%{opacity:.4}}
+@keyframes enter{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+/* The comet is a fixed length in pixels -- --dash -- and --len is that path's
+   real measured length, filled in per path by animateWires(). A proportional
+   dash (pathLength) makes a long wire a long smear, which is what the first
+   draft looked like. */
+.basewire{fill:none;stroke:#7b95c466;stroke-width:1}
+.beam-halo,.beam{fill:none;stroke-linecap:round;
+  stroke-dasharray:var(--dash) var(--len);animation:flow 2.6s linear infinite}
+.beam-halo{--dash:30;stroke:#8fb6ff66;stroke-width:7;filter:blur(5px)}
+.beam{--dash:30;stroke:#eaf2ff;stroke-width:1.8;
+  filter:drop-shadow(0 0 6px #a9ceffe6) drop-shadow(0 0 15px #7fb2ffb3)}
+@keyframes flow{
+  from{stroke-dashoffset:calc(0 - var(--dash))}
+  to{stroke-dashoffset:var(--len)}
+}
+
+@media(max-width:1080px){
+  .main{grid-template-columns:212px minmax(0,1fr)}
+  .cols{grid-template-columns:1fr;gap:20px;align-content:center}
+  .col.right,.col.left{justify-items:center}
+  .col.right .node,.node{justify-self:center}
+  .core-ring,.core-ring.b{display:none}
+  .board-results{grid-template-columns:1fr;gap:18px;padding:16px 24px}
+  .scene-card{display:none}
+  .tool-text h3{font-size:18px}
+}
+@media(max-width:820px){
+  body{overflow:auto}
+  .app{height:auto;min-height:100vh}
+  .main{grid-template-columns:1fr}
+  .rail{border-right:0;border-bottom:1px solid var(--line)}
+  .topbar{flex-wrap:wrap;height:auto;padding:12px 16px;gap:10px}
+  .stage-area{padding:12px}
+  .board{min-height:460px}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*:before,*:after{animation:none!important;transition:none!important}
+  .beam{opacity:.5}.beam-halo{display:none}.sweep{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="topbar">
+    <div class="identity">
+      <svg class="brandmark" viewBox="0 0 34 34" fill="none" aria-hidden="true"><path d="M5 27V7l12 12L29 7v20M10 27v-9l7 7 7-7v9M17 4v7" stroke="currentColor" stroke-width="1.4"/></svg>
+      <span class="brand">METIS</span>
+      <span class="brand-sub">店铺经营与选品</span>
+    </div>
+    <span class="badge">样稿 · 未连接后端</span>
+    <div class="top-actions">
+      <button class="orb" id="replay" aria-label="从头再放一遍" title="从头再放一遍"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.3M3 4v5h5"/></svg></button>
+      <button class="orb" id="pause" aria-label="暂停" title="暂停 / 继续"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 5v14M15 5v14"/></svg></button>
+      <button class="orb" id="full" aria-label="全屏" title="全屏"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5"/></svg></button>
+    </div>
+  </header>
+
+  <div class="main">
+    <aside class="rail">
+      <div class="rail-head">
+        <h2>生成流程</h2>
+      </div>
+      <ol class="steps" id="steps"></ol>
+    </aside>
+
+    <section class="stage-area">
+      <div class="board" id="board">
+        <div class="sweep"></div>
+        <canvas class="board-canvas" id="particles" aria-hidden="true"></canvas>
+        <svg class="wires" id="wires" aria-hidden="true"></svg>
+        <svg class="wires" id="sceneWires" aria-hidden="true"></svg>
+
+        <div class="board-head">
+          <span class="code" id="boardCode">01 / OBSERVATION</span>
+        </div>
+
+        <div class="cols" id="cols">
+          <div class="col left" id="colLeft"></div>
+          <div class="core-wrap">
+            <div class="core-ring"></div>
+            <div class="core-ring b"></div>
+            <div class="core"><div class="core-label" id="coreLabel">截图</div><div class="core-sub" id="coreSub">INPUT</div></div>
+          </div>
+          <div class="col right" id="colRight"></div>
+        </div>
+
+        <div class="board-results" id="results" hidden>
+          <article class="scene-card">
+            <div class="kicker"><span>SELECTED SCENE</span><b>01 / 03</b></div>
+            <h4>厨房抽屉整理</h4>
+            <p>把餐具与小厨具分区收纳，让台面更整洁，取用更顺手。</p>
+            <div class="foot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 9-5 9 5-9 5zM3 12l9 5 9-5"/></svg>当前选中场景</div>
+            <i class="port"></i>
+          </article>
+          <div class="products" id="products"></div>
+        </div>
+
+        <div class="board-foot" id="boardFoot">
+          <div class="chips" id="stageChips"></div>
+        </div>
+
+        <div class="bar"><i id="bar"></i></div>
+      </div>
+
+      <div class="toolbar">
+        <div class="tool-text">
+          <div class="eyebrow" id="toolEyebrow">STEP 01 / 08</div>
+          <h3 id="stageTitle">正在读取截图</h3>
+          <p id="stageSub">从商品页和销售记录里，整理出可用的信息</p>
+        </div>
+        <div class="tool-actions">
+          <button class="orb" id="addShot" aria-label="加截图" title="加截图"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 4 4 3-4 5 5"/></svg></button>
+          <button class="orb" id="copy" aria-label="复制" title="复制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5H6a1 1 0 0 0-1 1v9"/></svg></button>
+          <button class="orb" id="export" aria-label="导出" title="导出"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"/></svg></button>
+          <button class="pill" id="run"><span id="runLabel">生成经营建议</span><span class="arrow">→</span></button>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+/* ── the eight steps: our real labels ── */
+const STAGES = [
+  {code:'OBSERVATION', label:'识别截图里的商品', core:'截图', coreSub:'INPUT',
+   title:'正在读取截图', sub:'从商品页和销售记录里，整理出可用的信息',
+   left:[['商品页','IMAGE'],['销售记录','IMAGE'],['店铺资料','IMAGE']],
+   right:[['商品名称','EXTRACT'],['经营线索','EXTRACT'],['待核对的项','HOLD']],
+   chips:['商品名称','统计周期','页面来源']},
+  {code:'FILTER', label:'去掉你排除的商品', core:'商品名单', coreSub:'SCOPE',
+   title:'去掉你排除的商品', sub:'留下的商品，才是这次要分析的范围',
+   left:[['识别结果','INPUT'],['你的排除','OVERRIDE'],['手工补充','ADDED']],
+   right:[['保留的商品','KEPT'],['被排除的','DROPPED'],['过滤后的输入','OUTPUT']],
+   chips:['保留范围','排除名单','手工商品']},
+  {code:'STORE ANALYSIS', label:'写店铺结论和人群策略', core:'经营方向', coreSub:'JUDGE',
+   title:'把经营线索，连成方向', sub:'结合商品用途和已有信息，形成经营判断',
+   left:[['商品用途','EVIDENCE'],['经营线索','EVIDENCE'],['目标市场','CONTEXT']],
+   right:[['当前结构','ANALYSIS'],['适用人群','ANALYSIS'],['经营方向','PROPOSAL']],
+   chips:['店铺结论','产品结构','人群策略']},
+  {code:'SCENARIO PLANNING', label:'生成使用场景', core:'场景', coreSub:'COMPOSE',
+   title:'从经营方向，展开使用场景', sub:'把可以尝试的方向，放进具体的生活情境',
+   left:[['店铺方向','INPUT'],['使用需求','CONTEXT'],['已有商品','SEED']],
+   right:[['厨房抽屉','SCENE 01'],['整洁桌面','SCENE 02'],['换季衣柜','SCENE 03']],
+   chips:['为什么用','谁可能用','解决什么']},
+  {code:'PRODUCT NEEDS', label:'列出每个场景要用的商品', core:'商品角色', coreSub:'ROLES',
+   title:'为每个场景，找到商品角色', sub:'区分主要用途和配套需要，形成商品需求',
+   left:[['厨房抽屉','SCENE 01'],['整洁桌面','SCENE 02'],['换季衣柜','SCENE 03']],
+   right:[['主要商品','ROLE'],['配套商品','ROLE'],['用途说明','NOTE']],
+   chips:['主要用途','配套需要','一句话说明']},
+  {code:'QUERY EXPANSION', label:'补充搜索词', core:'搜索词', coreSub:'QUERY',
+   title:'换几种说法，寻找同一种需要', sub:'整理中英文名称和检索表达',
+   left:[['商品中文名','NAME'],['中文别名','ALIAS'],['英文名称','NAME']],
+   right:[['中文检索词','QUERY'],['英文检索词','QUERY'],['同义表达','QUERY']],
+   chips:['中文名称','英文名称','补充表达']},
+  {code:'CATALOG MATCHING', label:'找商品', core:'公司商品库', coreSub:'CATALOG', particles:true,
+   title:'从公司商品库，匹配可选商品', sub:'把场景需求，接到具体 SKU（四路召回）',
+   left:[['中文检索','CHANNEL'],['英文检索','CHANNEL'],['库存快照','STOCK']],
+   right:[['候选商品','CANDIDATE'],['库存状态','STOCK'],['匹配情况','MARK']],
+   chips:['四路召回','候选商品','目标国家库存']},
+  {code:'RESULT REVIEW', label:'帮你复核一遍', core:'选品清单', coreSub:'LIST',
+   title:'检查匹配结果，整理选品清单', sub:'标记相关性，保留需要你自己判断的候选',
+   left:[['候选商品','INPUT'],['场景需求','CONTEXT'],['商品信息','EVIDENCE']],
+   right:[['用途相关','RELATED'],['可能无关','REVIEW'],['尚未复核','UNKNOWN']],
+   chips:['相关性标记','候选顺序','待你判断的']},
+];
+
+const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>';
+const NODE_ICON = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="13" height="13" rx="3"/><path d="M7 8h6M7 11.5h4"/></svg>';
+
+const STEP_MS = 3400, RESULT_MS = 8000;
+let mode = 'flow', stage = 0, playing = !reduced.matches;
+let elapsed = 0, frame = 0, last = 0, raf = 0;
+
+/* ───────────── render ───────────── */
+function renderRail() {
+  const allDone = mode === 'result';
+  $('steps').innerHTML = STAGES.map((s, i) => {
+    const done = allDone || i < stage;
+    const now = !allDone && i === stage;
+    return `<li class="step ${done ? 'done' : ''} ${now ? 'now' : ''}" data-i="${i}">
+      <span class="dot">${done ? CHECK : String(i + 1).padStart(2, '0')}</span>
+      <span class="lbl">${s.label}</span>
+    </li>`;
+  }).join('');
+  [...$('steps').children].forEach(li => {
+    li.onclick = () => { mode = 'flow'; stage = +li.dataset.i; elapsed = 0; render(); };
+  });
+}
+
+function render() {
+  const isResult = mode === 'result';
+  const s = STAGES[stage];
+
+  $('cols').style.display = isResult ? 'none' : '';
+  $('results').hidden = !isResult;
+  $('boardFoot').style.display = isResult ? 'none' : 'grid';
+  $('bar').parentNode.style.display = playing ? '' : 'none';
+
+  if (isResult) {
+    $('boardCode').textContent = 'RESULT / 选品结果';
+    $('toolEyebrow').textContent = '结果 · 3 个场景 / 21 个商品角色';
+    $('stageTitle').textContent = '场景拆出来的商品角色，和它们匹配到的候选';
+    $('stageSub').textContent = '点开任何一个角色，才是候选 SKU 表';
+    $('runLabel').textContent = '导出选品清单';
+    renderProducts();
+    drawSceneWires();
+    drawWires(false);
+    stopParticles();
+  } else {
+    $('boardCode').textContent = String(stage + 1).padStart(2, '0') + ' / ' + s.code;
+    $('toolEyebrow').textContent = 'STEP ' + String(stage + 1).padStart(2, '0') + ' / 08';
+    $('stageTitle').textContent = s.title;
+    $('stageSub').textContent = s.sub;
+    $('runLabel').textContent = '生成经营建议';
+    $('coreLabel').textContent = s.core;
+    $('coreSub').textContent = s.coreSub;
+    $('colLeft').innerHTML = nodes(s.left, 'left');
+    $('colRight').innerHTML = nodes(s.right, 'right');
+    $('stageChips').innerHTML = s.chips.map((c, i) =>
+      `<span style="animation-delay:${i * .07}s">${c}</span>`).join('');
+    drawWires(true);
+    if (s.particles) startParticles(); else stopParticles();
+  }
+  renderRail();
+}
+
+function nodes(list) {
+  return list.map(([name, kind]) =>
+    `<div class="node">${NODE_ICON}<span><span>${name}</span><em>${kind}</em></span></div>`).join('');
+}
+
+/* ───────────── the flow timeline ───────────── */
+function loop(ts) {
+  raf = requestAnimationFrame(loop);
+  if (!last) last = ts;
+  const dt = Math.min(ts - last, 64); last = ts;
+  if (!playing) return;
+
+  const total = mode === 'flow' ? STEP_MS : RESULT_MS;
+  elapsed += dt;
+  const p = Math.min(elapsed / total, 1);
+  $('bar').style.transform = 'scaleX(' + p + ')';
+
+  frame += dt * .06;
+  if (mode === 'flow' && STAGES[stage].particles) drawParticles();
+  if (p >= 1) advance();
+}
+
+function advance() {
+  elapsed = 0; last = 0;
+  if (mode === 'flow' && stage < 7) { stage++; render(); }
+  else if (mode === 'flow') { mode = 'result'; render(); }
+  else { mode = 'flow'; stage = 0; render(); }
+}
+
+/* ───────────── wires: everything runs into the core ───────────── */
+function drawWires(active) {
+  const board = $('board'), svg = $('wires');
+  const b = board.getBoundingClientRect();
+  if (!b.width || !active) { svg.innerHTML = ''; return; }
+  svg.setAttribute('viewBox', `0 0 ${b.width} ${b.height}`);
+  const core = board.querySelector('.core').getBoundingClientRect();
+  const anchor = (useLeft) => ({
+    x: (useLeft ? core.left : core.right) - b.left,
+    y: core.top - b.top + core.height / 2,
+  });
+  let markup = '';
+  board.querySelectorAll('.node').forEach((node, i) => {
+    const r = node.getBoundingClientRect();
+    const useLeft = (r.left + r.width / 2) < (core.left + core.width / 2);
+    const tx = (useLeft ? r.right : r.left) - b.left;
+    const ty = r.top - b.top + r.height / 2;
+    const a = anchor(useLeft);
+    const c1 = tx + (a.x - tx) * .5, c2 = a.x - (a.x - tx) * .5;
+    const d = `M ${tx} ${ty} C ${c1} ${ty} ${c2} ${a.y} ${a.x} ${a.y}`;
+    markup += `<path class="basewire" d="${d}"/>`
+      + `<path class="beam-halo" d="${d}"/><path class="beam" d="${d}"/>`;
+  });
+  svg.innerHTML = markup;
+  animateWires(svg);
+}
+
+/* Each path is measured once so the comet is the same length on every wire,
+   and the halo rides on the same delay as the comet it wraps. */
+function animateWires(svg) {
+  svg.querySelectorAll('.beam').forEach((beam, i) => {
+    const halo = beam.previousElementSibling;
+    const len = beam.getTotalLength().toFixed(1);
+    const delay = -(i * .42).toFixed(2) + 's';
+    [beam, halo].forEach(el => {
+      if (!el) return;
+      el.style.setProperty('--len', len);
+      el.style.animationDelay = delay;
+    });
+  });
+}
+
+/* ───────────── particles: only on the recall step ───────────── */
+function point(t, p0, p1, p2, p3) {
+  const u = 1 - t;
+  return {
+    x: u*u*u*p0.x + 3*u*u*t*p1.x + 3*u*t*t*p2.x + t*t*t*p3.x,
+    y: u*u*u*p0.y + 3*u*u*t*p1.y + 3*u*t*t*p2.y + t*t*t*p3.y,
+  };
+}
+function drawParticles() {
+  const canvas = $('particles'), box = $('board').getBoundingClientRect();
+  if (!box.width) return;
+  const w = box.width, h = box.height;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (canvas.width !== Math.round(w * dpr)) {
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const count = 34;
+  for (let i = 0; i < count; i++) {
+    const isLeft = i % 2 === 0;
+    const y = ((i / (count - 1)) * 1.24 - .12) * h;
+    const p0 = { x: isLeft ? -26 : w + 26, y };
+    const p1 = { x: isLeft ? w * .22 : w * .78, y };
+    const p2 = { x: isLeft ? w * .36 : w * .64, y: h * .53 };
+    const p3 = { x: w * .5, y: h * .53 };
+    ctx.beginPath(); ctx.moveTo(p0.x, p0.y);
+    ctx.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+    ctx.strokeStyle = 'rgba(140,158,214,.26)'; ctx.lineWidth = .9;
+    ctx.setLineDash([1, 5]); ctx.stroke(); ctx.setLineDash([]);
+    const t = (frame * .00022 + i * .137) % 1;
+    const pos = point(t, p0, p1, p2, p3);
+    ctx.fillStyle = 'rgba(196,212,255,.85)';
+    ctx.fillRect(pos.x - 1.2, pos.y - 1.2, 2.4, 2.4);
+  }
+}
+function startParticles() { $('particles').style.opacity = '1'; drawParticles(); }
+function stopParticles() {
+  const c = $('particles');
+  c.getContext('2d').clearRect(0, 0, c.width, c.height);
+  c.style.opacity = '0';
+}
+
+/* ───────────── results: scene -> product roles ───────────── */
+const ROLES = [
+  ['抽屉分隔板', 'Adjustable drawer divider', '分开餐具与小厨具，取用不再翻找。', 'ok', '用途相关'],
+  ['分格收纳盒', 'Clear storage organizer', '集中放置零散小件，减少抽屉杂乱。', 'ok', '用途相关'],
+  ['抽屉防滑垫', 'Non-slip drawer liner', '固定收纳盒，减少开合时的滑动。', 'ok', '用途相关'],
+  ['水槽下方置物架', 'Under-sink shelf', '利用垂直空间，放下清洁用品。', 'warn', '可能无关'],
+];
+function renderProducts() {
+  $('products').innerHTML = ROLES.map(([cn, en, why, cls, tag], i) => `
+    <button class="product">
+      <i class="port"></i>
+      <span class="art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h18v11H3zM3 8l2-4h14l2 4M9 12h6"/></svg></span>
+      <span><em>${String(i + 1).padStart(2, '0')} / 商品角色</em><strong>${cn}</strong>
+      <small>${en} · ${why}</small></span>
+      <span class="tag ${cls}">${tag}</span>
+    </button>`).join('');
+}
+function drawSceneWires() {
+  const svg = $('sceneWires'), board = $('board');
+  const b = board.getBoundingClientRect();
+  if (!b.width || mode !== 'result') { svg.innerHTML = ''; return; }
+  svg.setAttribute('viewBox', `0 0 ${b.width} ${b.height}`);
+  const card = board.querySelector('.scene-card').getBoundingClientRect();
+  if (!card.width) { svg.innerHTML = ''; return; }
+  const sx = card.right - b.left, sy = card.top - b.top + card.height / 2;
+  let markup = '';
+  board.querySelectorAll('.product').forEach((p, i) => {
+    const r = p.getBoundingClientRect();
+    const tx = r.left - b.left, ty = r.top - b.top + r.height / 2;
+    const d = `M ${tx} ${ty} C ${tx + (sx - tx) * .5} ${ty} ${sx - (sx - tx) * .5} ${sy} ${sx} ${sy}`;
+    markup += `<path class="basewire" d="${d}"/>`
+      + `<path class="beam-halo" d="${d}"/><path class="beam" d="${d}"/>`;
+  });
+  svg.innerHTML = markup;
+  animateWires(svg);
+}
+
+/* ───────────── buttons: ripple + toggle ───────────── */
+function ripple(btn, ev) {
+  if (reduced.matches) return;
+  const r = btn.getBoundingClientRect();
+  const size = Math.max(r.width, r.height);
+  const el = document.createElement('span');
+  el.className = 'ripple';
+  el.style.width = el.style.height = size + 'px';
+  el.style.left = (ev.clientX - r.left - size / 2) + 'px';
+  el.style.top = (ev.clientY - r.top - size / 2) + 'px';
+  btn.appendChild(el);
+  setTimeout(() => el.remove(), 600);
+}
+document.querySelectorAll('.orb,.pill').forEach(btn => {
+  btn.addEventListener('click', (e) => ripple(btn, e));
+});
+
+$('pause').onclick = () => {
+  playing = !playing;
+  $('pause').classList.toggle('active', !playing);
+  $('pause').querySelector('svg').innerHTML = playing
+    ? '<path d="M9 5v14M15 5v14"/>' : '<path d="M7 4.5v15l13-7.5z"/>';
+  last = 0;
+  render();
+};
+$('replay').onclick = () => {
+  mode = 'flow'; stage = 0; elapsed = 0; last = 0;
+  $('replay').classList.add('spin');
+  setTimeout(() => $('replay').classList.remove('spin'), 900);
+  render();
+  requestAnimationFrame(redraw);
+};
+$('full').onclick = () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen?.();
+};
+$('run').onclick = () => {
+  mode = 'flow'; stage = 0; elapsed = 0; last = 0;
+  playing = true; $('pause').classList.remove('active');
+  $('pause').querySelector('svg').innerHTML = '<path d="M9 5v14M15 5v14"/>';
+  render();
+};
+
+/* ───────────── boot ───────────── */
+function redraw() {
+  drawWires(mode === 'flow');
+  drawSceneWires();
+  if (mode === 'flow' && STAGES[stage].particles) drawParticles();
+}
+render();
+requestAnimationFrame(redraw);
+requestAnimationFrame(loop);
+window.addEventListener('resize', redraw);
+document.addEventListener('visibilitychange', () => {
+  last = 0;
+  if (!document.hidden) redraw();
+});
+document.fonts.ready.then(redraw);
+</script>
+</body>
+</html>
