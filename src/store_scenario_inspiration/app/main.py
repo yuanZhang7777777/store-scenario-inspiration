@@ -22,13 +22,11 @@ from ..pipeline.clues import (
     kept_clues,
     load_custom_products,
     load_exclusions,
-    normalize_custom_products,
+    review_clues,
     save_custom_products,
     save_exclusions,
 )
 
-from .confirmation import (ANALYSIS_STAGES, ConfirmationRequired, approve_review,
-                           invalidate_review, review_details, review_status)
 from ..reliability import StoreLease
 from contextlib import closing
 from .config import Settings
@@ -44,14 +42,10 @@ from .export import (
 )
 from ..pipeline.artifacts import write_json
 from ..pipeline.recognize import drop_receipt_image
-from .jobs import STAGE_ORDER, JobManager, run_clues, run_recognize
+from .jobs import JobManager, run_clues, run_recognize
 from .params import SearchParams, load_params, save_params
 from .scenes import annotate
 from .stores import Workspace, read_json
-
-
-class ReviewApproval(BaseModel):
-    version: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
 
 
 class Exclusions(BaseModel):
@@ -136,8 +130,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def create_store(
         store_name: str = Form(...),
         country: str = Form(...),
-        files: list[UploadFile] = File(...),
+        files: list[UploadFile] = File(default=[]),
     ) -> dict:
+        """Open a store, with or without screenshots.
+
+        Screenshots are how a store is usually described, but they are not the
+        only way: an operator who knows what the shop sells can type the product
+        list and get the same reading from it. What a store cannot be is empty,
+        and that is checked once the pictures and the products are both in hand.
+        """
         if country.strip().upper() not in settings.countries:
             raise HTTPException(400, f"unsupported country: {country!r}")
         if len(files) > 20:
@@ -195,9 +196,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             with closing(StoreLease(workspace.path(store_id, ".pipeline.lock"))):
                 added = workspace.add_images(store_id, uploads)
-                # The store now lists a picture nothing has read, so the reading
-                # that was on disk is no longer a reading of this store.
-                invalidate_review(workspace.dir(store_id))
         except (ValueError, RuntimeError) as error:
             raise HTTPException(409, str(error)) from error
         return {"added": [image["filename"] for image in added],
@@ -215,7 +213,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with closing(StoreLease(workspace.path(store_id, ".pipeline.lock"))):
                 workspace.remove_image(store_id, filename)
                 base = workspace.dir(store_id)
-                invalidate_review(base)
                 # Only when there was a reading to prune. On a store nobody has
                 # read yet there is nothing to take out, and re-deriving would
                 # send the remaining pictures to the model on the way past.
@@ -237,36 +234,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(404, "no such screenshot")
         return FileResponse(path)
 
-    @app.get("/api/stores/{store_id}/review")
-    def get_review(store_id: str) -> dict:
-        workspace.entry(store_id)
-        return review_details(workspace.dir(store_id))
-
-    @app.post("/api/stores/{store_id}/review/confirm")
-    def confirm_review(store_id: str, body: ReviewApproval) -> dict:
-        workspace.entry(store_id)
-        try:
-            with closing(StoreLease(workspace.path(store_id, ".pipeline.lock"))):
-                approve_review(workspace.dir(store_id), body.version)
-            # start() reacquires the lease and revalidates the same facts.
-            return jobs.start(store_id, ANALYSIS_STAGES)
-        except (ValueError, RuntimeError) as error:
-            raise HTTPException(409, str(error)) from error
-
     @app.get("/api/stores/{store_id}/clues")
     def get_clues(store_id: str) -> dict:
-        """Every recognised product, with the operator's exclusions applied.
+        """Every product the store is being read for, with the exclusions applied.
 
         Recognition tags nearly everything as a product card at the same
         confidence, so there is no threshold worth showing. The only lever is
         what the operator excludes by hand, and that is all this returns.
         """
-        review = _require(workspace, store_id, "clues.json")
-        path = workspace.path(store_id, "exclusions.json")
-        review["excluded"] = sorted(load_exclusions(path))
-        review["exclusions_saved"] = path.is_file()
-        review["custom"] = load_custom_products(workspace.path(store_id, "custom_products.json"))
-        return review
+        workspace.entry(store_id)
+        return _clues_view(workspace, store_id)
 
     @app.put("/api/stores/{store_id}/clues")
     def put_clues(store_id: str, body: Exclusions) -> dict:
@@ -275,21 +252,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         Rebuilding is local and free, so the next scene generation sees the
         correction without a second DeepSeek call.
         """
-        review = _require(workspace, store_id, "clues.json")
+        review = _clues_view(workspace, store_id)
         known = {entry["clue"] for entry in review["entries"]}
         unknown = sorted(set(body.excluded) - known)
         if unknown:
             raise HTTPException(400, "排除了一个不存在的商品：" + "、".join(unknown))
         try:
             with closing(StoreLease(workspace.path(store_id, ".pipeline.lock"))):
-                previous = load_exclusions(workspace.path(store_id, "exclusions.json"))
-                if set(body.excluded) != previous:
-                    invalidate_review(workspace.dir(store_id))
                 save_exclusions(workspace.path(store_id, "exclusions.json"), body.excluded)
-                run_clues(workspace, settings, store_id, load_params(workspace.path(store_id, "params.json")))
+                _rebuild_clues(workspace, settings, store_id)
         except (ValueError, RuntimeError) as error:
             raise HTTPException(409, str(error)) from error
-        return get_clues(store_id)
+        return _clues_view(workspace, store_id)
 
     @app.put("/api/stores/{store_id}/products")
     def put_products(store_id: str, body: CustomProducts) -> dict:
@@ -297,25 +271,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         Same shape as the exclusion list and for the same reason: the operator
         sends the whole list they are looking at, so there is no diff to end up
-        out of step with the screen. Rebuilding is local and free, so the next
-        scene generation sees the addition without a second DeepSeek call.
+        out of step with the screen. This works before the store has ever been
+        read, which is how a store made of nothing but typed products starts.
         """
-        review = _require(workspace, store_id, "clues.json")
+        workspace.entry(store_id)
         for item in body.products:
             if not item.name_cn.strip():
                 raise HTTPException(400, "商品中文名不能为空。")
         try:
             with closing(StoreLease(workspace.path(store_id, ".pipeline.lock"))):
-                previous = load_custom_products(workspace.path(store_id, "custom_products.json"))
-                written = [item.model_dump() for item in body.products]
-                if normalize_custom_products(previous) != normalize_custom_products(written):
-                    invalidate_review(workspace.dir(store_id))
-                save_custom_products(workspace.path(store_id, "custom_products.json"), written)
-                run_clues(workspace, settings, store_id,
-                          load_params(workspace.path(store_id, "params.json")))
+                save_custom_products(workspace.path(store_id, "custom_products.json"),
+                                     [item.model_dump() for item in body.products])
+                _rebuild_clues(workspace, settings, store_id)
         except (ValueError, RuntimeError) as error:
             raise HTTPException(409, str(error)) from error
-        return get_clues(store_id)
+        return _clues_view(workspace, store_id)
 
     @app.get("/api/params/schema")
     def params_schema() -> dict:
@@ -335,16 +305,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/stores/{store_id}/jobs")
     def start_job(store_id: str, body: RunRequest | None = None) -> dict:
-        requested = tuple(body.stages) if body and body.stages else ()
-        unknown = sorted(set(requested) - set(STAGE_ORDER))
-        if unknown:
-            raise HTTPException(400, "unknown stage: " + "、".join(unknown))
+        requested = tuple(body.stages) if body and body.stages else None
         try:
-            return jobs.start(store_id, requested or None, body.params if body else None)
-        except ConfirmationRequired as error:
-            raise HTTPException(409, str(error)) from error
+            # A run reads the store, so a store with nothing in it has nothing to
+            # read. Refused here rather than paid for later: the guard is about
+            # the one mistake that costs a whole pipeline before it shows up.
+            entry = workspace.entry(store_id)
+            if not entry.get("images") and not load_custom_products(
+                    workspace.path(store_id, "custom_products.json")):
+                raise HTTPException(409, "这家店还没有商品：上传截图，或至少填写一个商品名。")
+            return jobs.start(store_id, requested, body.params if body else None)
+        except HTTPException:
+            raise
         except ValueError as error:
-            raise HTTPException(404, str(error)) from error
+            raise HTTPException(400, str(error)) from error
 
     @app.get("/api/jobs/{job_id}")
     def get_job(job_id: str) -> dict:
@@ -440,6 +414,36 @@ def _require(workspace: Workspace, store_id: str, name: str) -> dict:
     return read_json(path)
 
 
+def _clues_view(workspace: Workspace, store_id: str) -> dict:
+    """The product list as the page shows it, run or not.
+
+    Before the first run there is no reading to filter, so the list is what the
+    operator typed, in the same shape the run will write. The page can then show
+    one product list from the first second rather than an empty state that means
+    "no screenshots" and "not run yet" at the same time.
+    """
+    base = workspace.dir(store_id)
+    path = base / "clues.json"
+    review = (read_json(path) if path.is_file()
+              else review_clues([], load_exclusions(base / "exclusions.json"),
+                                load_custom_products(base / "custom_products.json")))
+    review["excluded"] = sorted(load_exclusions(base / "exclusions.json"))
+    review["exclusions_saved"] = (base / "exclusions.json").is_file()
+    review["custom"] = load_custom_products(base / "custom_products.json")
+    return review
+
+
+def _rebuild_clues(workspace: Workspace, settings: Settings, store_id: str) -> None:
+    """Re-derive the filtered input after an edit, when there is a reading to re-derive it from.
+
+    On a store with no screenshots and no run yet there is nothing to rebuild —
+    the edit is the whole state, and the run reads it directly.
+    """
+    if (workspace.dir(store_id) / "sample_store.json").is_file():
+        run_clues(workspace, settings, store_id,
+                  load_params(workspace.path(store_id, "params.json")))
+
+
 def _store_payload(workspace: Workspace, jobs: JobManager, store_id: str) -> dict:
     entry = workspace.entry(store_id)
     clues_path = workspace.path(store_id, "clues.json")
@@ -456,5 +460,4 @@ def _store_payload(workspace: Workspace, jobs: JobManager, store_id: str) -> dic
         "kept_clues": kept_clues(read_json(clues_path)) if clues_path.is_file() else [],
         "excluded_clues": excluded_clues(read_json(clues_path)) if clues_path.is_file() else [],
         "job": jobs.newest(store_id),
-        "confirmation": review_status(workspace.dir(store_id)),
     }

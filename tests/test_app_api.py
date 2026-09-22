@@ -192,31 +192,14 @@ def settle(client, job_id: str) -> dict:
     raise AssertionError(f"job {job_id} did not settle: {job}")
 
 
-def confirm(client, store_id: str) -> dict:
-    """Approve the facts as they were read, which is what starts the analysis."""
-    review = client.get(f"/api/stores/{store_id}/review")
-    assert review.status_code == 200, review.text
-    started = client.post(f"/api/stores/{store_id}/review/confirm",
-                          json={"version": review.json()["version"]})
-    assert started.status_code == 200, started.text
-    return settle(client, started.json()["id"])
-
-
 def run_job(client, store_id: str, stages: list[str] | None = None,
             params: dict | None = None) -> dict:
-    """The whole run, in the two halves the page now performs.
+    """One press, which is what the upload page sends.
 
-    With no stages this is what the operator gets: the upload only reads the
-    screenshots, and the analysis starts once they have confirmed what was read.
-    The two cannot share one request, because that would spend the money before
-    anyone agreed to it.
+    With no stage list the backend runs the whole pipeline: the reading and
+    everything written from it land in one job, and the operator edits the
+    result afterwards rather than approving the product list first.
     """
-    if stages is None:
-        # The knobs go with the first half, because that is where the page
-        # sends them: the operator sets them before confirming, and the
-        # analysis the confirmation starts reads what was saved.
-        settle(client, post_job(client, store_id, ["recognize", "clues"], params)["id"])
-        return confirm(client, store_id)
     return settle(client, post_job(client, store_id, stages, params)["id"])
 
 
@@ -254,30 +237,65 @@ def test_duplicate_upload_names_stay_apart(client) -> None:
     assert names == ["a-2.png", "a.png"]
 
 
+def test_a_store_with_no_screenshots_runs_on_the_products_that_were_typed(client) -> None:
+    """Some shops are described by what the operator types and nothing else. The
+    pipeline runs for them the same way, and the pictures it never had cost
+    nothing."""
+    created = client.post("/api/stores", data={"store_name": "手填店", "country": "PH"})
+
+    assert created.status_code == 200, created.text
+    store_id = created.json()["id"]
+    assert created.json()["images"] == []
+
+    typed = client.put(f"/api/stores/{store_id}/products", json={
+        "products": [{"name_cn": "遮阳棚替换布", "name_en": "Awning Fabric"}]})
+    assert typed.status_code == 200, typed.text
+    assert [entry["clue"] for entry in typed.json()["entries"]] == ["遮阳棚替换布"]
+    # The list exists before the store has ever been read: this is what the
+    # operator edits, and it is the same list a recognised product lands in.
+    assert typed.json()["entries"][0]["manual"] is True
+
+    job = run_job(client, store_id)
+
+    assert job["status"] == "ready"
+    assert job["stages"][0]["detail"] == "没有截图，商品名单从手工填写开始"
+    assert [stage["status"] for stage in job["stages"]] == ["ready"] * 8
+    source = read_analysis_input(client, store_id)
+    assert [item["clue"] for item in source["observed_product_clues"]] == ["遮阳棚替换布"]
+    assert [item["role"] for item in source["observed_product_clues"]] == ["人工添加"]
+    assert client.get(f"/api/stores/{store_id}/retrieval").status_code == 200
+
+
+def test_a_store_with_neither_screenshots_nor_products_is_refused(client) -> None:
+    """The one mistake worth catching before it costs a whole run: there is
+    nothing to read a store from."""
+    store_id = client.post("/api/stores",
+                           data={"store_name": "空店", "country": "PH"}).json()["id"]
+
+    refused = client.post(f"/api/stores/{store_id}/jobs")
+
+    assert refused.status_code == 409
+    assert "还没有商品" in refused.json()["detail"]
+
+
 def test_running_the_pipeline_produces_scenes_expansion_and_candidates(client) -> None:
     store_id = upload(client).json()["id"]
 
-    # Two halves, because the operator gets to see what was read before paying
-    # for the analysis of it: recognition runs on the upload, and everything
-    # after it runs on the confirmation.
-    read = settle(client, post_job(client, store_id, ["recognize", "clues"])["id"])
-    assert [stage["name"] for stage in read["stages"]] == ["recognize", "clues"]
-    assert [stage["status"] for stage in read["stages"]] == ["ready", "ready"]
-    assert read["usage"]["total_tokens"] == 42
-
-    job = confirm(client, store_id)
+    # One press, from the screenshots to the candidates: the operator edits the
+    # product list afterwards, from the results, rather than approving it first.
+    job = run_job(client, store_id)
 
     assert job["status"] == "ready"
     assert [stage["name"] for stage in job["stages"]] == [
-        "synthesis", "scenes", "products", "expand", "retrieval", "rerank",
+        "recognize", "clues", "synthesis", "scenes", "products", "expand", "retrieval", "rerank",
     ]
-    assert [stage["status"] for stage in job["stages"]] == ["ready"] * 6
+    assert [stage["status"] for stage in job["stages"]] == ["ready"] * 8
     # Every stage reports how long the operator waited for it.
     assert all(isinstance(stage["seconds"], float) for stage in job["stages"])
     assert job["seconds"] >= 0
     # Every paid stage's spend lands in one running total, including the one call
     # per scene in the products stage.
-    assert job["usage"]["total_tokens"] == 99 + 30 * 2 + 5 + 7
+    assert job["usage"]["total_tokens"] == 42 + 99 + 30 * 2 + 5 + 7
 
     source = read_analysis_input(client, store_id)
     assert [item["clue"] for item in source["observed_product_clues"]] == ["遮阳棚替换布", "风扇"]
@@ -294,15 +312,14 @@ def test_running_the_pipeline_produces_scenes_expansion_and_candidates(client) -
 def test_the_paid_stages_are_marked_so_the_operator_knows_what_costs_money(client) -> None:
     store_id = upload(client).json()["id"]
 
-    read = settle(client, post_job(client, store_id, ["recognize", "clues"])["id"])
-    job = confirm(client, store_id)
+    job = run_job(client, store_id)
 
     # The reading half: the screenshots cost money, applying the exclusion list
     # does not.
-    assert [stage["paid"] for stage in read["stages"]] == [True, False]
+    assert [stage["paid"] for stage in job["stages"][:2]] == [True, False]
     # Judging the candidates is free on Jev, which is what a store starts on, and
     # charged by DeepSeek, so the tag follows whichever model the store is set to.
-    assert [stage["paid"] for stage in job["stages"]] == [
+    assert [stage["paid"] for stage in job["stages"][2:]] == [
         True, True, True, True, False, False,
     ]
 
@@ -334,25 +351,24 @@ def test_redoing_the_local_stage_never_pays_for_anything_again(client, monkeypat
     assert client.get(f"/api/stores/{store_id}/retrieval").status_code == 200
 
 
-def test_excluding_a_product_asks_for_the_facts_to_be_confirmed_again(client) -> None:
-    """The exclusion list is one of the things the operator approved, so changing
-    it makes the approval stale and the analysis stops until they look again.
-    Nothing is deleted: the run they already paid for is still on disk."""
+def test_excluding_a_product_leaves_the_results_behind_without_deleting_them(client) -> None:
+    """Ruling a product out is the edit the operator makes most, and it is local:
+    the exclusion is applied at once, everything written from the old list is
+    marked behind so the one button offers to redo it, and the run they already
+    paid for stays readable."""
     store_id = upload(client).json()["id"]
     run_job(client, store_id)
 
     client.put(f"/api/stores/{store_id}/clues", json={"excluded": ["风扇"]})
 
-    review = client.get(f"/api/stores/{store_id}/review").json()
-    assert review["confirmed"] is False
-    assert review["state"] == "awaiting_confirmation"
-    refused = client.post(f"/api/stores/{store_id}/jobs", json={"stages": ["scenes"]})
-    assert refused.status_code == 409
-    assert "确认" in refused.json()["detail"]
-    # The facts the operator is being asked about are the new ones.
+    # The list the next run would be written from is the new one, already.
     assert [item["clue"] for item in read_analysis_input(client, store_id)["observed_product_clues"]] == [
         "遮阳棚替换布"
     ]
+    # The reading itself is untouched — the pictures did not change — and
+    # everything written from the list is.
+    assert client.get(f"/api/stores/{store_id}").json()["outdated"] == [
+        "synthesis", "scenes", "products", "expand", "retrieval", "rerank"]
     # And the results of the previous run are still readable.
     assert client.get(f"/api/stores/{store_id}/retrieval").status_code == 200
 
@@ -421,7 +437,7 @@ def test_a_stage_the_pipeline_does_not_have_is_rejected(client) -> None:
     response = client.post(f"/api/stores/{store_id}/jobs", json={"stages": ["adoption"]})
 
     assert response.status_code == 400
-    assert "unknown stage" in response.json()["detail"]
+    assert response.json()["detail"] == "未知的处理步骤：adoption"
 
 
 def test_operator_can_rule_a_product_out_and_the_next_run_avoids_it(client) -> None:
@@ -840,23 +856,32 @@ def test_a_product_only_the_deleted_screenshot_showed_goes_with_it(client, monke
     assert len(removed.json()["store"]["images"]) == 1
 
 
-def test_deleting_a_screenshot_asks_for_the_facts_to_be_confirmed_again(client) -> None:
+def test_deleting_a_screenshot_leaves_the_analysis_behind(client) -> None:
+    """A picture that is gone was part of what the reading was made of, so the
+    reading is redone and everything written from it is marked behind."""
     store_id = upload(client).json()["id"]
     run_job(client, store_id)
-    assert client.get(f"/api/stores/{store_id}").json()["confirmation"]["confirmed"] is True
+    assert client.get(f"/api/stores/{store_id}").json()["outdated"] == []
 
     assert client.delete(f"/api/stores/{store_id}/images/row_017_image_1.png").status_code == 200
 
-    assert client.get(f"/api/stores/{store_id}").json()["confirmation"]["confirmed"] is False
+    assert client.get(f"/api/stores/{store_id}").json()["outdated"] == [
+        "synthesis", "scenes", "products", "expand", "retrieval", "rerank"]
 
 
-def test_the_last_screenshot_cannot_be_deleted(client) -> None:
+def test_the_last_screenshot_can_be_deleted(client) -> None:
+    """A store described by typed products alone is still a store, so the
+    pictures can all go. The reading is redone from nothing — free — and what
+    was written from the old one is left behind, as any edit leaves it."""
     store_id = upload(client, count=1).json()["id"]
+    run_job(client, store_id)
 
     response = client.delete(f"/api/stores/{store_id}/images/row_017_image_1.png")
 
-    assert response.status_code == 409
-    assert "至少要留一张截图" in response.json()["detail"]
+    assert response.status_code == 200, response.text
+    assert response.json()["store"]["images"] == []
+    assert client.get(f"/api/stores/{store_id}").json()["outdated"] == [
+        "synthesis", "scenes", "products", "expand", "retrieval", "rerank"]
 
 
 def test_deleting_a_screenshot_that_is_not_there_is_rejected(client) -> None:

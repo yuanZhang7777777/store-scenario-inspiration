@@ -20,16 +20,12 @@ import numpy as np
 if os.environ.get('SSI_FIX_PAYLOAD_ONLY') == '1':
     from offline_modules import (analysis, vectors, providers, rerank, exports, rel,
                                  jobs, retrieval, stores, Params, WS)
-    # The payload-only harness mirrors the modules under test by hand and has no
-    # review gate to approve against; the real project does, so only the real
-    # imports set this.
-    confirmation = None
 else:
     from store_scenario_inspiration import reliability as rel
     from store_scenario_inspiration.pipeline import analysis
     from store_scenario_inspiration.catalog import bilingual_vectors as vectors
     from store_scenario_inspiration.app import rerank_providers as providers
-    from store_scenario_inspiration.app import (confirmation, rerank, export as exports,
+    from store_scenario_inspiration.app import (rerank, export as exports,
                                                 jobs, retrieval, stores)
     from store_scenario_inspiration.app.params import SearchParams as Params
     from store_scenario_inspiration.app.stores import Workspace as WS
@@ -328,11 +324,6 @@ class StoreTests(unittest.TestCase):
         rel.atomic_json(self.base/'deepseek_scenes.json',{'model':'deepseek-flash','scenes':[
             {'scene_name':'A','audience':'a','user_need':'n','evidence':'e'},
             {'scene_name':'B','audience':'a','user_need':'n','evidence':'e'}]})
-        # The analysis stages are behind the review gate, so a store that has
-        # been read but not confirmed cannot start one. These tests are about
-        # what happens after the operator approves, so they approve here.
-        if confirmation is not None:
-            confirmation.approve_review(self.base, confirmation.review_version(self.base))
         self.params=Params(); self.settings=types.SimpleNamespace(api_key='fixture',typesafe_key='',data_dir=Path(self.tmp.name))
 
     def product(self, source, scene, key, **kwargs):

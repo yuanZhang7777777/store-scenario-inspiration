@@ -63,7 +63,6 @@ from .rerank import Ask, rerank_store, strip_verdicts
 from .rerank_providers import ask_deepseek, ask_typesafe
 from .retrieval import flatten_expansions, retrieve_store
 from .stores import STAGE_SETTINGS, Workspace, read_json, record_stage_run
-from .confirmation import (ANALYSIS_STAGES, choose_stages, authorize_start, require_confirmation)
 
 from store_scenario_inspiration.reliability import StoreLease, json_digest, atomic_json
 
@@ -83,6 +82,22 @@ EXPAND = "expand"
 RETRIEVAL = "retrieval"
 RERANK = "rerank"
 STAGE_ORDER = (RECOGNIZE, CLUES, SYNTHESIS, SCENES, PRODUCTS, EXPAND, RETRIEVAL, RERANK)
+
+
+def choose_stages(stages: tuple[str, ...] | None) -> tuple[str, ...]:
+    """The steps to run, in pipeline order. No request means the whole pipeline.
+
+    Nothing gates the reading apart from what is written from it any more: a
+    first run goes from the screenshots all the way to the candidates, and the
+    operator edits the result and runs it again from there.
+    """
+    requested = STAGE_ORDER if not stages else tuple(stages)
+    unknown = set(requested) - set(STAGE_ORDER)
+    if unknown:
+        raise ValueError("未知的处理步骤：" + "、".join(sorted(unknown)))
+    return tuple(stage for stage in STAGE_ORDER if stage in requested)
+
+
 # Written the way the operator talks, not the way the pipeline is built: these
 # are read on the sidebar and in the log line "开始找商品". Mirrored, by hand, in
 # PIPELINE in frontend/src/pages/StorePage.tsx.
@@ -151,7 +166,6 @@ class Job:
     seconds: float | None = None
     params_snapshot: SearchParams | None = None
     lease: object | None = field(default=None, repr=False)
-    review_version: str | None = None
 
 
 def now() -> str:
@@ -172,15 +186,11 @@ class JobManager:
 
         Recognition is by far the most expensive stage, and an exclusion list or
         a recall count only affects what comes after it, so redoing either must
-        not pay for vision again. It is also the one stage that runs without a
-        confirmation: everything in ANALYSIS_STAGES spends money on the operator's
-        behalf, and that only happens once they have approved the facts it reads.
+        not pay for vision again. A request that names no stages asks for the
+        whole pipeline, which is what the first run sends.
         """
         self.workspace.entry(store_id)  # Refuse a missing or invalid store.
-        unknown = sorted(set(stages or ()) - set(STAGE_ORDER))
-        if unknown:
-            raise ValueError('unknown stage: ' + '、'.join(unknown))
-        chosen = choose_stages(stages, STAGE_ORDER)
+        chosen = choose_stages(stages)
         with self._lock:
             stored = params or load_params(self.workspace.path(store_id, 'params.json'))
             for active in self._jobs.values():
@@ -191,14 +201,12 @@ class JobManager:
                     raise ValueError('该店铺已有任务，参数未覆盖。请等待完成或停止后再试。')
             lease = StoreLease(self.workspace.path(store_id, '.pipeline.lock'))
             try:
-                review_version = authorize_start(self.workspace.dir(store_id), chosen)
                 frozen = stored.model_copy(deep=True)
                 if params is not None:
                     save_params(self.workspace.path(store_id, 'params.json'), frozen)
                 job = Job(id=uuid.uuid4().hex[:12], store_id=store_id, created_at=now(),
                           stages=[Stage(name) for name in chosen], started=time.perf_counter(),
-                          provider=frozen.rerank_provider, params_snapshot=frozen, lease=lease,
-                          review_version=review_version)
+                          provider=frozen.rerank_provider, params_snapshot=frozen, lease=lease)
                 self._jobs[job.id] = job
                 future = self._pool.submit(self._run, job)
             except Exception:
@@ -318,8 +326,6 @@ class JobManager:
                             "message": f"开始{STAGE_LABELS[stage.name]}"})
         started = time.perf_counter()
         try:
-            if stage.name in ANALYSIS_STAGES:
-                require_confirmation(self.workspace.dir(job.store_id), job.review_version)
             detail = STAGE_RUNNERS[stage.name](self.workspace, self.settings, job.store_id, params)
         except Exception as error:  # noqa: BLE001 — reported to the operator, not swallowed
             with self._lock:
@@ -367,6 +373,10 @@ def run_recognize(workspace: Workspace, settings, store_id: str, params: SearchP
     store's. Removing one costs nothing at all: the removal is applied to the
     receipt when it happens, so this step can also be reached with nothing left
     to read and simply re-derives the sample from what is already known.
+
+    A store with no screenshots at all also reaches it, free: the reading is
+    empty and the product list is whatever the operator typed, which is the same
+    shape the rest of the pipeline reads.
     """
     entry = workspace.entry(store_id)
     base = workspace.dir(store_id)
@@ -378,6 +388,11 @@ def run_recognize(workspace: Workspace, settings, store_id: str, params: SearchP
         previous = extra if previous is None else fold_receipt(entry, previous, extra)
         write_json(receipt_path, previous)
     if previous is None or not previous.get("images"):
+        if not entry.get("images"):
+            write_json(base / "sample_store.json",
+                       build_sample(entry, {"images": []},
+                                    workspace.path(store_id, "store.json")))
+            return "没有截图，商品名单从手工填写开始"
         raise ValueError("店铺没有可识别的截图。")
     write_json(base / "sample_store.json",
                build_sample(entry, receipt_result(previous), workspace.path(store_id, "store.json")))

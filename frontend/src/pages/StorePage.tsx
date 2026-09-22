@@ -17,7 +17,6 @@ import { countryName } from "../countries";
 import { paramsEqual, validateParams, stageNotice, mergeStages } from "../operatorUx";
 import ParamsPanel from "../components/ParamsPanel";
 import BusinessEvidence from "../components/BusinessEvidence";
-import ConfirmationPanel from "../components/ConfirmationPanel";
 import PhotoViewer from "../components/PhotoViewer";
 import SceneWorkbench from "../components/SceneWorkbench";
 import StageRail, { type RailStage } from "../components/StageRail";
@@ -163,8 +162,8 @@ export default function StorePage() {
     return () => clearInterval(timer);
   }, [running, jobId, storeId, refresh, load]);
 
-  // Both start buttons use the visible settings. Saving settings does not itself
-  // launch a model job. The server still decides whether source data is confirmed.
+  // Every run uses the settings as the form shows them, saved or not, and saving
+  // settings does not itself launch a job.
   async function saveDraft(value: Params | null = draft): Promise<StoreDetail | null> {
     if (!detail || !value || paramsEqual(value, detail.params)) return detail;
     const schema = await api.paramSchema();
@@ -179,7 +178,6 @@ export default function StorePage() {
   async function run(stages?: string[], params?: Params): Promise<boolean> {
     if (requesting.current || isLive(job) || busy) return false;
     const recognitionOnly = Boolean(stages?.length) && stages!.every((stage) => ["recognize", "clues"].includes(stage));
-    if (!detail?.confirmation?.confirmed && !recognitionOnly) { setError("请先确认店铺信息。"); return false; }
     requesting.current = true;
     setBusy(true);
     setError("");
@@ -195,8 +193,8 @@ export default function StorePage() {
         // A changed scene count must also refresh the scenes, even when the
         // button was originally rendered for a retrieval-only update.
         stagesToRun = mergeStages(nextStages ?? [], updated?.outdated ?? []);
-        if (stagesToRun.includes("recognize") || !updated?.confirmation?.confirmed) {
-          throw new Error("店铺资料已变化，请先识别并确认商品。");
+        if (stagesToRun.includes("recognize")) {
+          throw new Error("截图有新内容，请先重读之后再更新建议。");
         }
       }
       const nextJob = await api.startJob(storeId, stagesToRun, recognitionOnly ? undefined : chosenParams);
@@ -235,7 +233,7 @@ export default function StorePage() {
       setBusy(false);
     }
     if (added.length) {
-      setHint(`已添加 ${added.length} 张截图。识别后请重新核对商品。`);
+      setHint(`已添加 ${added.length} 张截图，正在重读新增的这几张。`);
       await run(["recognize", "clues"]);
     }
   }
@@ -243,7 +241,7 @@ export default function StorePage() {
   /** Drop one screenshot, and with it whatever only that screenshot showed. */
   async function dropShot(filename: string) {
     if (busy || running) return;
-    const warning = `删除「${filename}」？\n仅在这张图中识别到的商品也会移除，之后需要重新核对。`;
+    const warning = `删除「${filename}」？\n仅在这张图中识别到的商品也会移除，之后需要重新生成建议。`;
     if (!window.confirm(warning)) return;
     setBusy(true);
     setError("");
@@ -280,7 +278,7 @@ export default function StorePage() {
       setClues(await api.setExcluded(storeId, next));
       setDetail(await api.store(storeId));
       if (detail?.stages.synthesis) {
-        setHint("商品范围已更新，请重新确认后生成建议。");
+        setHint("商品范围已更新，重新生成经营建议后才会用上新名单。");
       }
     } catch (e) {
       setError((e as Error).message);
@@ -299,7 +297,7 @@ export default function StorePage() {
       setClues(await api.setProducts(storeId, next));
       setDetail(await api.store(storeId));
       if (detail?.stages.synthesis) {
-        setHint("商品名单已更新，请重新确认后生成建议。");
+        setHint("商品名单已更新，重新生成经营建议后才会用上新名单。");
       }
       return true;
     } catch (e) {
@@ -354,8 +352,7 @@ export default function StorePage() {
     const writing = behind.filter((name) =>
       ["synthesis", "scenes", "products", "expand"].includes(name));
     const recall = behind.filter((name) => name === "retrieval" || name === "rerank");
-    // Reading comes first and needs no confirmation: the operator cannot agree
-    // to facts the store has not been read for yet.
+    // Reading comes first: everything below it is written from what it found.
     if (reading.length) {
       return {
         label: "识别新增截图",
@@ -363,12 +360,11 @@ export default function StorePage() {
         title: "仅识别新增截图，会调用模型。",
       };
     }
-    if (!detail.confirmation?.confirmed) return null;
     if (!detail.stages.synthesis) {
       return {
         label: "生成经营建议",
         stages: ["synthesis", "scenes", "products", "expand", "retrieval", "rerank"],
-        title: "按已确认的商品名单生成场景和商品匹配。这一步会调用模型。",
+        title: "按当前商品名单生成场景和商品匹配。会调用模型，费用以当前服务配置为准。",
       };
     }
     if (writing.length || recall.length) {
@@ -397,11 +393,9 @@ export default function StorePage() {
   const scored = retrieval?.inventory === "available";
   const summary = running
     ? `正在处理${job?.seconds ? ` · 已用 ${took(job.seconds)}` : ""}`
-    : !detail.confirmation?.confirmed
-      ? (detail.stages.recognized ? "等待你核对商品" : "等待识别截图")
-      : job?.status === "failed" || job?.status === "cancelled"
-        ? "部分步骤未完成，可继续处理"
-        : detail.outdated?.length ? "有结果需要更新" : analysis ? "经营建议已生成" : "等待生成经营建议";
+    : job?.status === "failed" || job?.status === "cancelled"
+      ? "部分步骤未完成，可继续处理"
+      : detail.outdated?.length ? "有结果需要更新" : analysis ? "经营建议已生成" : "等待生成经营建议";
 
   return (
     <>
@@ -459,16 +453,16 @@ export default function StorePage() {
       )}
 
       {hint && <p className="notice warn" role="status">{hint}</p>}
-      {analysis && (running || !detail.confirmation?.confirmed || Boolean(detail.outdated?.length)) && (
+      {analysis && (running || Boolean(detail.outdated?.length)) && (
         <p className="notice warn" role="status">{running ? "正在更新建议，页面中的结果可能尚未全部更新。" : "以下为上次分析结果。资料或设置已有变化，更新后再作为当前建议使用。"}</p>
       )}
 
       <div className="workbench">
         <main className="workbench-main">
           {clues && (
-            <details className="card" id="clues" open={!detail.confirmation?.confirmed}>
+            <details className="card" id="clues">
               <summary>
-                {ROLE_LABEL} <span className="count">{clues.entries.length} 条</span>
+                {images.length ? ROLE_LABEL : "这家店的商品"} <span className="count">{clues.entries.length} 条</span>
               </summary>
               <div className="clue-list">
                 {clues.entries.map((entry) => (
@@ -488,7 +482,7 @@ export default function StorePage() {
                         <em className={entry.manual ? "role-tag manual" : "role-tag"}>
                           {entry.role || "未标注"}
                         </em>
-                        {entry.image_count} 张截图出现
+                        {entry.manual ? "手工填写" : `${entry.image_count} 张截图出现`}
                       </small>
                     </span>
                     <span className="clue-tags">
@@ -548,30 +542,18 @@ export default function StorePage() {
             </details>
           )}
 
-          {detail.stages.recognized && (
-            <ParamsPanel
-              storeId={storeId}
-              params={detail.params}
-              busy={running || busy}
-              confirmed={Boolean(detail.confirmation?.confirmed)}
-              // Reading the store back is what answers "what did that change",
-              // and the answer is the server's to give: `outdated` is derived
-              // from the run record, so a locally patched copy of `detail` would
-              // show a button that never appears.
-              onSaved={async () => { await load(); }}
-              onDraft={setDraft}
-              onBusyChange={setBusy}
-            />
-          )}
-
-          {detail.stages.recognized && !running && (
-            <ConfirmationPanel storeId={storeId} status={detail.confirmation} busy={busy}
-              productCount={detail.kept_clues.length}
-              beforeConfirm={async () => { await saveDraft(); }}
-              onReload={load}
-              onBusyChange={setBusy}
-              onStarted={(nextJob) => { setJob(nextJob); void load().catch((e: Error) => setError(e.message)); }} />
-          )}
+          <ParamsPanel
+            storeId={storeId}
+            params={detail.params}
+            busy={running || busy}
+            // Reading the store back is what answers "what did that change",
+            // and the answer is the server's to give: `outdated` is derived
+            // from the run record, so a locally patched copy of `detail` would
+            // show a button that never appears.
+            onSaved={async () => { await load(); }}
+            onDraft={setDraft}
+            onBusyChange={setBusy}
+          />
 
           {analysis && (
             <>

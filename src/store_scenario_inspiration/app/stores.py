@@ -78,12 +78,13 @@ class Workspace:
         """Write one store's screenshots and remember where they came from.
 
         Uploads arrive as ``(filename, file object)`` and are copied in chunks so
-        a batch of screenshots never exists twice in memory.
+        a batch of screenshots never exists twice in memory. They are optional:
+        an operator who knows what the shop sells can type the products instead,
+        and gets the same reading from them. What a store cannot be is empty, and
+        that is judged where the products are known, not here.
         """
         if not store_name.strip():
             raise ValueError("store_name is required")
-        if not uploads:
-            raise ValueError("at least one screenshot is required")
 
         store_id = self._new_id(store_name)
         images = self.images_dir(store_id)
@@ -124,16 +125,14 @@ class Workspace:
     def remove_image(self, store_id: str, filename: str) -> dict:
         """Drop one screenshot, and the file behind it.
 
-        The last one is refused rather than allowed: a store with no screenshots
-        has nothing to read and no page to show.
+        The last one may go as well: a store read from typed products alone is a
+        store, and the screenshots were only ever one way to describe one.
         """
         entry = self.entry(store_id)
         current = entry.get("images") or []
         kept = [image for image in current if image["filename"] != Path(filename).name]
         if len(kept) == len(current):
             raise ValueError(f"没有这张截图：{filename}")
-        if not kept:
-            raise ValueError("店铺至少要留一张截图。")
         (self.images_dir(store_id) / Path(filename).name).unlink(missing_ok=True)
         entry["images"] = kept
         write_json(self.path(store_id, "store.json"), entry)
@@ -159,13 +158,20 @@ class Workspace:
         behind: list[str] = []
         # The reading comes before the chain: a screenshot that no vision pass
         # has covered makes everything downstream describe a store that is not
-        # the one on disk.
+        # the one on disk. A store with no screenshots has nothing to cover, and
+        # the steps below are judged by their files alone.
         downstream = True
         try:
             entry = self.entry(store_id)
-            receipt_path = base / "deepseek_vision.json"
-            receipt = read_json(receipt_path) if receipt_path.is_file() else None
-            downstream = receipt is None or bool(unread_images(entry, receipt))
+            if not entry.get("images"):
+                # No screenshots: the reading is still a step, and it is behind
+                # until it has been taken. Nothing on disk can put it behind
+                # again afterwards, because there is nothing left to read.
+                downstream = not (base / "sample_store.json").is_file()
+            else:
+                receipt_path = base / "deepseek_vision.json"
+                receipt = read_json(receipt_path) if receipt_path.is_file() else None
+                downstream = receipt is None or bool(unread_images(entry, receipt))
         except (ValueError, TypeError, OSError):
             downstream = True
         if downstream:

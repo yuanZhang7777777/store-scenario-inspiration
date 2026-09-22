@@ -20,16 +20,17 @@ const HINTS: Record<keyof Params, string> = {
   temperature: "数值越高，表达越多样。",
 };
 interface Props {
-  storeId: string;
+  /** Absent before the store exists: on the upload page there is nothing to save
+   *  to yet, and the values ride along with the run that creates it. */
+  storeId?: string;
   params: Params;
-  onSaved: (params: Params) => void | Promise<void>;
+  onSaved?: (params: Params) => void | Promise<void>;
   busy: boolean;
-  confirmed: boolean;
   onDraft: (params: Params) => void;
   onBusyChange?: (busy: boolean) => void;
 }
 
-export default function ParamsPanel({ storeId, params, onSaved, busy, confirmed, onDraft, onBusyChange }: Props) {
+export default function ParamsPanel({ storeId, params, onSaved, busy, onDraft, onBusyChange }: Props) {
   const [fields, setFields] = useState<ParamField[]>([]);
   const [draft, setDraft] = useState<Params>(params);
   const [note, setNote] = useState("");
@@ -56,7 +57,7 @@ export default function ParamsPanel({ storeId, params, onSaved, busy, confirmed,
   const changed = !paramsEqual(draft, params);
 
   async function apply() {
-    if (busy || submitting.current || !changed) return;
+    if (!storeId || busy || submitting.current || !changed) return;
     const invalid = validateParams(draft, fields);
     if (invalid) { setNote(invalid); return; }
     submitting.current = true;
@@ -67,8 +68,8 @@ export default function ParamsPanel({ storeId, params, onSaved, busy, confirmed,
     try {
       const next = await api.setParams(storeId, draft);
       persisted = true;
-      await onSaved(next);
-      setNote(confirmed ? "设置已保存。后续分析使用新设置。" : "设置已保存，确认商品后将使用这套设置。");
+      await onSaved?.(next);
+      setNote("设置已保存。后续分析使用新设置。");
     } catch {
       setNote(persisted ? "设置已保存，但页面未能刷新。请刷新后继续。" : "设置未保存，请重试。");
     } finally {
@@ -97,7 +98,7 @@ export default function ParamsPanel({ storeId, params, onSaved, busy, confirmed,
   }
 
   return <details className="card advanced-settings operator-settings">
-    <summary>调整推荐范围 <span className="muted">选填，默认即可</span>{changed && <span className="count">有未保存修改</span>}</summary>
+    <summary>调整推荐范围 <span className="muted">{storeId ? "选填，默认即可" : "选填，默认即可；改了就用这里这套跑"}</span>{changed && <span className="count">{storeId ? "有未保存修改" : "已改默认值"}</span>}</summary>
     {schemaError ? <p className="notice warn" role="alert">设置暂时无法加载。<button className="btn ghost small" onClick={() => setReload((value) => value + 1)}>重试</button></p> :
       fields.length === 0 ? <p className="muted" role="status">正在加载设置…</p> : <>
         <div className="business-fields operator-fields">{fields.filter((field) => COMMON.includes(field.name)).map(renderField)}</div>
@@ -107,8 +108,8 @@ export default function ParamsPanel({ storeId, params, onSaved, busy, confirmed,
         </details>
       </>}
     <div className="form-actions">
-      <button className="btn small" disabled={busy || applying || !changed || !fields.length} onClick={apply}>{applying ? "保存中…" : "保存设置"}</button>
-      <button className="btn ghost small" disabled={busy || applying || !changed} onClick={() => { setDraft(params); setNote(""); }}>撤销修改</button>
+      {storeId && <button className="btn small" disabled={busy || applying || !changed || !fields.length} onClick={apply}>{applying ? "保存中…" : "保存设置"}</button>}
+      <button className="btn ghost small" disabled={busy || applying || !changed} onClick={() => { setDraft(params); setNote(""); }}>{storeId ? "撤销修改" : "恢复默认"}</button>
       <span role="status" className="muted">{note}</span>
     </div>
   </details>;

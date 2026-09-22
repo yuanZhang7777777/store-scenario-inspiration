@@ -42,16 +42,23 @@ test("stage updates are deduplicated and sorted", () => assert.deepEqual(Array.f
 test("new backend stages are not silently lost", () => assert.equal(mergeStages([], ["future_stage"]).includes("future_stage"), true));
 
 // These are source-level regression guards, not browser integration tests.
-test("the confirmation flow awaits draft persistence before confirming", () => {
-  const text = fs.readFileSync(path.join(root, "src/components/ConfirmationPanel.tsx"), "utf8");
-  assert.ok(text.indexOf("await beforeConfirm?.()") < text.indexOf("await api.confirmReview("));
-  assert.match(text, /api\.confirmReview\(storeId, reviewedVersion\)/);
+test("the upload page opens the store, writes the products, then runs everything", () => {
+  const text = fs.readFileSync(path.join(root, "src/pages/StoresPage.tsx"), "utf8");
+  // The order matters: the products have to be on the store before the run that
+  // reads them. No stage list is sent, which is what asks for the whole pipeline.
+  assert.ok(text.indexOf("await api.createStore(") < text.indexOf("await api.setProducts("));
+  assert.ok(text.indexOf("await api.setProducts(") < text.indexOf("await api.startJob("));
+  assert.match(text, /api\.startJob\(id, undefined, chosen\)/);
 });
 test("settings changes no longer auto-run retrieval and reranking", () => {
   const text = fs.readFileSync(path.join(root, "src/pages/StorePage.tsx"), "utf8");
   assert.doesNotMatch(text, /const rebuilt = useRef/);
   assert.doesNotMatch(text, /不花钱|免费重跑/);
-  assert.match(text, /beforeConfirm=\{async \(\) => \{ await saveDraft\(\); \}\}/);
+  // Nothing gates the run any more: the store is read, written and recalled in
+  // one press, and the operator edits the result afterwards.
+  assert.doesNotMatch(text, /confirmation|confirmReview|确认商品/);
+  const api = fs.readFileSync(path.join(root, "src/api.ts"), "utf8");
+  assert.doesNotMatch(api, /confirmReview|ReviewStatus/);
 });
 test("store naming is optional and the market is not preselected", () => {
   const text = fs.readFileSync(path.join(root, "src/pages/StoresPage.tsx"), "utf8");

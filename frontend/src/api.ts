@@ -1,11 +1,3 @@
-export interface ReviewStatus {
-  state: "not_ready" | "awaiting_confirmation" | "confirmed";
-  confirmed: boolean;
-  version: string | null;
-  confirmed_at?: string | null;
-}
-export interface ReviewDetails extends ReviewStatus { business_context: BusinessContext | null }
-
 export interface SalesRow {
   product_name: string;
   product_title: string | null;
@@ -118,7 +110,6 @@ export interface StoreSummary {
 }
 
 export interface StoreDetail {
-  confirmation?: ReviewStatus;
   id: string;
   store: { store_name: string; country: string; images: Screenshot[] };
   stages: StageProgress;
@@ -360,12 +351,6 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...(stages ? { stages } : {}), ...(params ? { params } : {}) }),
     }),
-
-  review: (id: string) => call<ReviewDetails>(`/stores/${id}/review`),
-
-  confirmReview: (id: string, version: string) => call<Job>(`/stores/${id}/review/confirm`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version }),
-  }),
 
   job: (jobId: string) => call<Job>(`/jobs/${jobId}`),
 
