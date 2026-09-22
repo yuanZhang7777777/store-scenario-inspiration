@@ -8,13 +8,13 @@ body {
 }
 
 button { font: inherit; cursor: pointer; }
-a { color: var(--teal); }
+a { color: var(--accent); }
 
 .shell { width: min(1240px, calc(100% - 32px)); margin: 0 auto 72px; }
 
 .hero { padding: 40px 0 22px; }
 .eyebrow {
-  margin: 0 0 8px; color: var(--teal); font-size: 12px; font-weight: 800;
+  margin: 0 0 8px; color: var(--accent); font-size: 12px; font-weight: 800;
   letter-spacing: .14em; text-transform: uppercase;
 }
 h1 { margin: 0; font-size: clamp(26px, 3.4vw, 42px); line-height: 1.15; letter-spacing: -.03em; }
@@ -45,7 +45,7 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
   border: 2px dashed #c6d4e2; border-radius: 16px; background: var(--soft);
   color: var(--muted); text-align: center; transition: border-color .15s, background .15s;
 }
-.drop.over { border-color: var(--teal); background: var(--teal-soft); }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
 .drop strong { color: var(--navy); font-size: 15px; }
 
 .field-row { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 16px; }
@@ -75,7 +75,7 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
 .notice { padding: 12px 15px; border-radius: 12px; font-weight: 600; }
 .notice.error { color: #7a2018; background: #fdeceb; border: 1px solid #f3c9c5; }
 .notice.warn { color: #7c460d; background: var(--amber-soft); border: 1px solid #f0d6a3; }
-.notice.ok { color: #11685f; background: var(--teal-soft); border: 1px solid #bddfd8; }
+.notice.ok { color: #0a6396; background: var(--accent-soft); border: 1px solid #b3dcf2; }
 
 /* ---------- store list ---------- */
 
@@ -84,7 +84,7 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
   display: block; padding: 16px; border: 1px solid var(--line); border-radius: 14px;
   background: linear-gradient(180deg, #fff, #f8fafc); text-decoration: none; color: inherit;
 }
-.store-item:hover { border-color: var(--teal); }
+.store-item:hover { border-color: var(--accent); }
 .store-item strong { display: block; color: var(--navy); font-size: 15px; }
 .store-item small { color: var(--muted); }
 
@@ -107,8 +107,8 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
   padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px;
   background: white; color: var(--muted); font-size: 12px; font-weight: 650;
 }
-.chip:hover:not(:disabled) { border-color: var(--teal); color: var(--navy); }
-.chip[data-on="true"] { border-color: var(--teal); background: var(--teal-soft); color: #11685f; }
+.chip:hover:not(:disabled) { border-color: var(--accent); color: var(--navy); }
+.chip[data-on="true"] { border-color: var(--accent); background: var(--accent-soft); color: #0a6396; }
 .chip:disabled { opacity: .45; cursor: not-allowed; }
 
 .scene-list { display: grid; gap: 9px; }
@@ -135,7 +135,7 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
 .scene-head[data-open="true"], .role-head[data-open="true"] { background: var(--soft); }
 .scene-name { color: var(--navy); font-weight: 650; font-size: 14px; }
 .pick-count { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tricheck { width: 16px; height: 16px; accent-color: var(--teal); }
+.tricheck { width: 16px; height: 16px; accent-color: var(--accent); }
 
 /* Kept visible rather than hover-only: the whole complaint was that a picked
    batch could not be undone or flipped. */
@@ -224,7 +224,7 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
 
 .lbl {
   display: inline-block; margin-right: 8px; padding: 1px 7px; border-radius: 6px;
-  color: #11685f; background: var(--teal-soft); font-size: 12px; font-weight: 700;
+  color: #0a6396; background: var(--accent-soft); font-size: 12px; font-weight: 700;
 }
 
 .people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
@@ -253,7 +253,7 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
   position: relative; display: grid; gap: 4px; width: 132px; padding: 5px;
   border: 1px solid var(--line); border-radius: 12px; background: white; text-align: left;
 }
-.shot:hover { border-color: var(--teal); }
+.shot:hover { border-color: var(--accent); }
 .shot-open { padding: 0; border: 0; background: none; cursor: zoom-in; }
 .shot img { width: 100%; height: 76px; object-fit: cover; border-radius: 8px; display: block; }
 .shot span { color: var(--muted); font-size: 10.5px; overflow-wrap: anywhere; }
@@ -267,7 +267,7 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
   place-content: center; min-height: 118px; border-style: dashed; cursor: pointer;
   color: var(--muted); font-weight: 700; text-align: center;
 }
-.shot-add:hover { color: var(--teal); }
+.shot-add:hover { color: var(--accent); }
 
 .count {
   display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px;
@@ -295,8 +295,8 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .pick-clue { cursor: pointer; }
-.pick-clue:hover { border-color: var(--teal); }
-.pick-clue input { width: 16px; height: 16px; accent-color: var(--teal); }
+.pick-clue:hover { border-color: var(--accent); }
+.pick-clue input { width: 16px; height: 16px; accent-color: var(--accent); }
 .pick-clue[data-off="true"] strong { color: #78859a; text-decoration: line-through; }
 .pick-clue[data-off="true"] { background: #f4f6f9; }
 .role-tag {
@@ -304,7 +304,7 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
   font-size: 11px; font-style: normal; white-space: nowrap;
 }
 /* No screenshot behind this one, so it reads differently from the rest at a glance. */
-.role-tag.manual { background: var(--teal-soft); color: #11685f; font-weight: 700; }
+.role-tag.manual { background: var(--accent-soft); color: #0a6396; font-weight: 700; }
 .clue-tags { display: flex; align-items: center; gap: 6px; }
 
 .add-product { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
@@ -319,7 +319,7 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
   font-style: normal; font-weight: 700;
 }
 .tag.paid { color: #7c460d; background: var(--amber-soft); }
-.tag.free { color: #11685f; background: var(--teal-soft); }
+.tag.free { color: #0a6396; background: var(--accent-soft); }
 
 /* ---------- the knobs ---------- */
 
@@ -328,7 +328,7 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
   display: grid; gap: 6px; padding: 14px; border: 1px solid var(--line);
   border-radius: 14px; background: #fbfcfe;
 }
-.knob[data-changed="true"] { border-color: var(--teal); background: var(--teal-soft); }
+.knob[data-changed="true"] { border-color: var(--accent); background: var(--accent-soft); }
 .knob-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .knob-head strong { color: var(--navy); font-size: 13px; }
 .knob-head .tag { margin-left: 0; }
@@ -351,7 +351,7 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
 .role-name { color: var(--navy); font-weight: 650; font-size: 12px; }
 .role-name.excluded { color: #78859a; text-decoration: line-through; }
 .role-head .tag { margin-left: 0; }
-.chev { color: var(--teal); font-size: 11px; font-weight: 700; }
+.chev { color: var(--accent); font-size: 11px; font-weight: 700; }
 
 .candidates { padding: 10px 8px 4px; border-top: 1px dashed var(--line); }
 .queries { margin: 0 0 8px; color: #40516a; font-size: 12px; }
@@ -367,9 +367,9 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
   border-radius: 9px; background: #fbfcfe;
 }
 .pick:hover { border-color: var(--line); }
-.pick[data-on="true"] { border-color: #bddfd8; background: var(--teal-soft); }
+.pick[data-on="true"] { border-color: #b3dcf2; background: var(--accent-soft); }
 .pick input { grid-area: check; align-self: start; margin-top: 3px;
-  width: 15px; height: 15px; accent-color: var(--teal); }
+  width: 15px; height: 15px; accent-color: var(--accent); }
 .pick .names { grid-area: names; display: grid; min-width: 0; }
 .pick .names strong { color: var(--navy); font-size: 12px; font-weight: 650; }
 .pick .names small { color: var(--muted); font-size: 11px; overflow: hidden;
@@ -384,7 +384,7 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
   font-style: normal; text-align: center; white-space: nowrap;
 }
 .pick .stock { min-width: 52px; }
-.stock.yes { color: #11685f; background: var(--teal-soft); }
+.stock.yes { color: #0a6396; background: var(--accent-soft); }
 .stock.no { color: #78859a; background: #eef1f5; }
 
 /* The verdict answers a different question from the stock tag — "does this scene
@@ -393,7 +393,7 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
   padding: 1px 6px; border-radius: 6px; font-size: 10px; font-style: normal;
   white-space: nowrap; cursor: help;
 }
-.pick .verdict.related { color: #11685f; background: var(--teal-soft); }
+.pick .verdict.related { color: #0a6396; background: var(--accent-soft); }
 .pick .verdict.unrelated { color: #8a5a12; background: var(--amber-soft); }
 
 /* The bulk-select lever is the point of the ranked list, so it stays visible
@@ -413,7 +413,7 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
   color: var(--muted); font-size: 11px;
 }
 .candidate-list.taken .pick { background: #f7f8fa; }
-.candidate-list.taken .pick[data-on="true"] { background: var(--teal-soft); }
+.candidate-list.taken .pick[data-on="true"] { background: var(--accent-soft); }
 .candidate-list.taken .pick .names strong { color: #40516a; }
 
 /* ---------- what the operator finally took ---------- */

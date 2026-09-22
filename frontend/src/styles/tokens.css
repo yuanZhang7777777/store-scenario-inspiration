@@ -1,4 +1,5 @@
-/* Carried over from the dashboard this replaces, so the two look like one tool. */
+/* The one palette. The primary is a blue (#0a8fd4). An earlier teal (#087f73)
+   read as green on screen, so the accent family is now hue 195–230°. */
 :root {
   color-scheme: light;
   --ink: #17202f;
@@ -7,8 +8,10 @@
   --paper: #fff;
   --soft: #f4f7fb;
   --navy: #153e5b;
-  --teal: #087f73;
-  --teal-soft: #e2f5f1;
+  --accent: #0a8fd4;
+  --accent-soft: #e8f7ff;
+  --accent-lift: #4fb9ec;
+  --accent-ink: #0a6396;
   --amber: #b96513;
   --amber-soft: #fff3d9;
   --shadow: 0 12px 36px rgba(26, 48, 71, .09);

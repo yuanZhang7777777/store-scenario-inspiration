@@ -1,5 +1,5 @@
-/* Product-facing polish only: no hidden candidates or changed ranking rules. */
-:root { --ink: #192a3d; --muted: #62748a; --line: #dee5ed; --paper: #fff; --accent: #2459ba; }
+/* Product-facing polish only: no hidden candidates or changed ranking rules.
+   The palette itself lives in tokens.css and is not overridden here. */
 body { background: #f4f6f9; color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
 .shell { max-width: 1320px; margin: 0 auto; padding: 28px 28px 64px; }
 .hero { padding: 6px 0 20px; background: none; border: 0; box-shadow: none; }
@@ -75,7 +75,7 @@ summary .muted { margin-left: 8px; font-weight: 400; }
   display: grid; place-items: center; background: #c9d1dc;
 }
 .rail-list li[data-status="running"] .dot { background: var(--amber); }
-.rail-list li[data-status="ready"] .dot { background: var(--teal); }
+.rail-list li[data-status="ready"] .dot { background: var(--accent); }
 .rail-list li[data-status="failed"] .dot { background: #b0392f; }
 .rail-list .spinner { width: 12px; height: 12px; border-width: 2px; }
 .rail-list li[data-status="pending"] .rail-text strong { color: var(--muted); font-weight: 600; }
