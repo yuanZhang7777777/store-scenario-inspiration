@@ -344,18 +344,45 @@ def test_the_product_names_in_the_state_are_not_repeated_within_a_scene(typesafe
 
 
 def test_a_typesafe_choice_becomes_a_verdict_with_its_certainty(typesafe) -> None:
+    """The certainty kept is Jev's own ``confidence``, not the chosen option's
+    share of ``probabilities``. The two are made to disagree here on purpose, so
+    reading the wrong one turns this red."""
     typesafe({"answers": {
-        "A": {"type": "choice", "choice": "unrelated",
+        "A": {"type": "choice", "choice": "unrelated", "confidence": 0.55,
               "probabilities": {"related": 0.1, "unrelated": 0.85}},
-        "B": {"type": "choice", "choice": "related",
+        "B": {"type": "choice", "choice": "related", "confidence": 0.93,
               "probabilities": {"related": 0.9, "unrelated": 0.0}},
     }})
 
     verdicts, _ = rerank_providers.ask_typesafe(
         "S", [role("S", "遮阳棚", ["A", "B"])], api_key="k")
 
-    assert verdicts["A"] == {"verdict": "unrelated", "probability": 0.85}
-    assert verdicts["B"] == {"verdict": "related", "probability": 0.9}
+    assert verdicts["A"] == {"verdict": "unrelated", "probability": 0.55}
+    assert verdicts["B"] == {"verdict": "related", "probability": 0.93}
+
+
+def test_the_cutoff_reads_a_certainty_the_model_can_actually_be_unsure_about(typesafe) -> None:
+    """A two-option choice always gives the option it picked at least half the
+    mass, so the chosen option's own probability cannot go below the cutoff's
+    lowest setting of 50 — and measured, none of 10,360 real unrelated answers
+    did. Driving the cutoff from that number would mean it never holds anything
+    back, however far the operator turns it. ``confidence`` is what carries
+    "not sure" as far as the decision."""
+    typesafe({"answers": {
+        # Sure of itself by its own probabilities (0.85), unsure about it (0.45).
+        "A": {"type": "choice", "choice": "unrelated", "confidence": 0.45,
+              "probabilities": {"related": 0.15, "unrelated": 0.85}},
+        "B": {"type": "choice", "choice": "unrelated", "confidence": 0.9,
+              "probabilities": {"related": 0.1, "unrelated": 0.9}},
+    }})
+    verdicts, _ = rerank_providers.ask_typesafe(
+        "S", [role("S", "遮阳棚", ["A", "B"])], api_key="k")
+
+    kept, dropped = apply_verdicts(
+        [candidate("A", 1), candidate("B", 2)], verdicts, cutoff=0.5, drop=True)
+
+    assert [row["main_sku"] for row in dropped] == ["B"]
+    assert [row["main_sku"] for row in kept] == ["A"]
 
 
 def test_a_typesafe_answer_that_is_missing_or_unreadable_leaves_the_candidate_alone(
@@ -382,6 +409,7 @@ def test_the_jev_call_is_cached_by_the_exact_bytes_it_asked(tmp_path, monkeypatc
     def fake_post(url, payload, api_key, *, timeout, label):
         asks.append(payload)
         return {"answers": {"A": {"type": "choice", "choice": "unrelated",
+                                  "confidence": 0.9,
                                   "probabilities": {"unrelated": 0.9}}},
                 "usage": {"total_tokens": 100}}
 

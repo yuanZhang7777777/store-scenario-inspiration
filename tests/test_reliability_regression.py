@@ -300,7 +300,8 @@ class VerdictTests(unittest.TestCase):
 
     def test_typesafe_partial_cached_answer_is_requeried_once(self):
         roles=[{'candidates':[{'main_sku':'A','standard_name_en':'A'}]}]
-        valid={'answers':{'A':{'type':'choice','choice':'related','probabilities':{'related':.9}}}}
+        valid={'answers':{'A':{'type':'choice','choice':'related','confidence':.9,
+                               'probabilities':{'related':.9}}}}
         with tempfile.TemporaryDirectory() as directory:
             with patch.object(providers,'_post',return_value=valid):
                 providers.ask_typesafe('s',roles,api_key='fixture',cache_dir=Path(directory))

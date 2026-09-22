@@ -169,6 +169,18 @@ def _read_typesafe_answers(answers: dict, skus: list[str]) -> Verdicts:
     An answer that is missing, of the wrong type, or names an option outside the
     two is not evidence of anything, least of all of irrelevance — the SKU comes
     back unanswered and stays where similarity put it.
+
+    The number kept is ``confidence``, and deliberately not
+    ``probabilities[choice]``. They are separate fields and they disagree: over
+    10,360 real answers the two matched on fewer than a tenth of them. The
+    choice's own probability cannot serve the cutoff at all, because the question
+    is a two-option choice — whichever option was picked holds at least half the
+    mass, so it never falls below 0.5, and the cutoff's lowest setting is 50.
+    Read that way the cutoff could not hold back a single row: measured, all
+    10,360 unrelated answers cleared it. ``confidence`` is the model's own account
+    of how sure it is and spans 0 to 1, which is what the setting promises the
+    operator — and it is the field DeepSeek's answers are read for, so both
+    models now put the same kind of number behind one setting.
     """
     verdicts = unknown(skus)
     if not isinstance(answers, dict):
@@ -180,10 +192,8 @@ def _read_typesafe_answers(answers: dict, skus: list[str]) -> Verdicts:
         verdict = answer.get('choice')
         if not isinstance(verdict, str) or verdict.strip().lower() not in CRITERIA:
             continue
-        verdict = verdict.strip().lower()
-        probabilities = answer.get('probabilities')
-        score = probabilities.get(verdict) if isinstance(probabilities, dict) else None
-        verdicts[sku] = {'verdict': verdict, 'probability': probability(score)}
+        verdicts[sku] = {'verdict': verdict.strip().lower(),
+                         'probability': probability(answer.get('confidence'))}
     return verdicts
 
 
