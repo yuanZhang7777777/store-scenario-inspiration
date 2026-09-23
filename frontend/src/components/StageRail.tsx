@@ -15,30 +15,27 @@ interface Props {
   onCancel: () => void;
 }
 const GROUPS = [
-  { label: "识别店铺商品", names: ["recognize", "clues"], target: "clues" },
-  { label: "生成经营建议", names: ["synthesis", "scenes", "products"], target: "analysis-summary" },
-  { label: "匹配推荐商品", names: ["expand", "retrieval", "rerank"], target: "sku-recommendations" },
+  { label: "店铺分析", names: ["recognize", "clues", "synthesis"], target: "analysis-summary" },
+  { label: "生成场景", names: ["scenes"], target: "analysis-scenes" },
+  { label: "场景商品", names: ["products"], target: "sku-recommendations" },
+  { label: "匹配商品", names: ["expand", "retrieval", "rerank"], target: "sku-recommendations" },
 ];
 const STATUS: Record<StageStatus, string> = {
-  pending: "等待处理", running: "处理中…", ready: "已完成", failed: "未完成，请查看详情",
+  pending: "等待生成", running: "正在生成", ready: "已完成", failed: "未完成",
 };
 
 export default function StageRail({ stages, summary, running, onCancel }: Props) {
-  return <aside className="stage-rail" aria-label="分析进度">
+  return <section className="stage-rail" aria-label="生成进度" data-running={running}>
     <div className="rail-card">
-      <div className="rail-head"><h2>分析进度</h2>{running && <button className="btn ghost small" onClick={onCancel}>停止分析</button>}</div>
-      <p className="rail-summary" role="status">{summary}</p>
-      <ol className="rail-list">{GROUPS.map((group) => {
+      <div className="rail-head"><p className="rail-summary" role="status">{summary}</p>{running && <button className="btn ghost small" onClick={onCancel}>停止生成</button>}</div>
+      <ol className="rail-list">{GROUPS.map((group, index) => {
         const members = stages.filter((stage) => group.names.includes(stage.name));
         const status = groupStatus(members);
         // A completed technical step is not necessarily a visible artifact.
         const target = members.some((stage) => stage.target === group.target) ? group.target : "";
-        const body = <><span className="dot" aria-hidden="true">{status === "running" && <i className="spinner" />}</span><span className="rail-text"><strong>{group.label}</strong><small>{STATUS[status]}</small></span></>;
-        return <li key={group.label} data-status={status}>{target ? <a href={`#${target}`}>{body}</a> : <div className="rail-plain">{body}</div>}</li>;
+        const body = <><span className="dot" aria-hidden="true">{status === "ready" ? "✓" : index + 1}</span><span className="rail-text"><strong>{group.label}</strong><small>{STATUS[status]}</small></span></>;
+        return <li key={group.label} data-status={status} aria-current={status === "running" ? "step" : undefined}>{target ? <a href={`#${target}`}>{body}</a> : <div className="rail-plain">{body}</div>}</li>;
       })}</ol>
-      <details className="operator-technical"><summary>查看处理详情</summary>
-        <ol className="operator-log">{stages.map((stage) => <li key={stage.name}><strong>{stage.label}</strong><small>{stage.note || STATUS[stage.status]}</small></li>)}</ol>
-      </details>
     </div>
-  </aside>;
+  </section>;
 }

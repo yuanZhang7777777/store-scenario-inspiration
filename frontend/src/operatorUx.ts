@@ -6,9 +6,7 @@ export const PARAM_TITLES: Record<keyof Params, string> = {
   stock_filter: "库存范围",
   expansion_terms: "补充搜索词数",
   recall_limit: "每类商品的候选数",
-  rerank: "无关商品处理",
   rerank_provider: "复核模型",
-  rerank_cutoff: "排除标准（%）",
   temperature: "创意程度",
 };
 

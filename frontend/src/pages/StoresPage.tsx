@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api, type CustomProduct, type ParamField, type Params, type StoreSummary } from "../api";
 import { countryName } from "../countries";
 import { defaultStoreName, validateParams } from "../operatorUx";
@@ -11,6 +11,11 @@ const MAX_FILES = 20;
 
 export default function StoresPage() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const home = pathname === "/";
+  const creating = pathname === "/stores/new";
+  const currentPath = useRef(pathname);
+  currentPath.current = pathname;
   const [stores, setStores] = useState<StoreSummary[]>([]);
   const [storesLoading, setStoresLoading] = useState(true);
   const [storesError, setStoresError] = useState("");
@@ -43,9 +48,6 @@ export default function StoresPage() {
 
   useEffect(() => {
     let active = true;
-    api.stores().then((items) => { if (active) setStores(items); })
-      .catch(() => { if (active) setStoresError("已有分析暂时无法加载，请刷新重试。"); })
-      .finally(() => { if (active) setStoresLoading(false); });
     api.health().then((health) => {
       if (!active) return;
       setCountries(health.countries);
@@ -64,6 +66,23 @@ export default function StoresPage() {
     }).catch(() => { if (active) setError("设置规则暂时无法加载，请刷新重试。"); });
     return () => { active = false; };
   }, []);
+  useEffect(() => {
+    if (!home) return;
+    let active = true;
+    let pending = false;
+    const refresh = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const items = await api.stores();
+        if (active) { setStores(items.reverse()); setStoresError(""); }
+      } catch { if (active) setStoresError("店铺列表暂时无法加载，正在重试…"); }
+      finally { pending = false; if (active) setStoresLoading(false); }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 5000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [home]);
   useEffect(() => () => { selection.current.forEach((item) => URL.revokeObjectURL(item.url)); }, []);
 
   function add(files: FileList | File[]) {
@@ -116,7 +135,11 @@ export default function StoresPage() {
       }
       if (products.length) await api.setProducts(id, products);
       await api.startJob(id, undefined, chosen);
-      navigate(`/stores/${id}`);
+      selection.current.forEach((item) => URL.revokeObjectURL(item.url));
+      selection.current = [];
+      setPicked([]); setProducts([]); setName(""); setCountry(""); setSavedId(null); setShot(null);
+      setNewProduct({ name_cn: "", name_en: "" });
+      if (currentPath.current === "/stores/new") navigate(`/stores/${id}`, { replace: true });
     } catch (failure) {
       setError(id ? "店铺已保存，但分析未启动。点“继续生成”重试，无需重新上传。" :
         failure instanceof Error ? failure.message : "上传未完成，请稍后重试。");
@@ -129,13 +152,19 @@ export default function StoresPage() {
   const locked = busy || Boolean(savedId);
 
   return <>
+    {home && <>
+      <section className="home-intro"><div><p className="eyebrow">从店铺到选品清单</p><h1>下一份清单，从这里开始。</h1><p className="muted">上传店铺截图，自动生成分析、场景与商品，最后导出 Excel。</p></div><Link className="btn" to="/stores/new">{picked.length || products.length || savedId ? "继续填写" : "新建店铺"}<span aria-hidden="true"> ↗</span></Link></section>
+      <section className="card history-card"><div className="section-heading"><h2>历史店铺</h2><span className="muted">{stores.length} 家店铺</span></div>{storesLoading ? <p className="muted" role="status">正在加载…</p> : storesError ? <p className="notice error" role="alert">{storesError}</p> : stores.length === 0 ? <p className="muted">还没有店铺。新建第一家店铺，生成结果会保存在这里。</p> : <div className="store-grid">{stores.map((store) => <Link className="store-item" key={store.id} to={`/stores/${store.id}`}><strong>{store.store_name}</strong><small>{countryName(store.country)} · {store.images.length} 张截图</small><span className="history-status" data-running={store.job_status === "running" || store.job_status === "pending"}>{store.job_status === "running" || store.job_status === "pending" ? "正在生成" : store.job_status === "failed" || store.job_status === "cancelled" ? "待继续生成" : store.needs_update ? "待更新" : store.stages.retrieval ? "查看结果与导出" : "继续生成"}<span aria-hidden="true"> →</span></span></Link>)}</div>}</section>
+    </>}
+    <div hidden={!creating}>
+    <p className="crumb"><Link to="/">← 所有店铺</Link></p>
     <section className="card upload-card operator-upload" onPaste={(event) => {
       if (event.clipboardData.files.length && !locked) {
         event.preventDefault(); add(event.clipboardData.files);
       }
     }}>
-      <div className="section-heading"><div><h2>说说这家店卖什么</h2><p className="muted">截图和商品名，给一样就行。按一个按钮，直接出经营建议和商品推荐，不用先整理商品名单。</p></div></div>
-      <ol className="operator-steps" aria-label="使用流程"><li aria-current="step"><span>1</span>上传截图或填商品</li><li><span>2</span>生成经营建议</li><li><span>3</span>在结果里增删改</li></ol>
+      <div className="section-heading"><div><h1>新建店铺</h1><p className="muted">选择销售国家，上传截图或填写商品名。开始后会自动完成全部步骤。</p></div></div>
+      <ol className="operator-steps" aria-label="使用流程"><li aria-current="step"><span>1</span>提供店铺资料</li><li><span>2</span>开始生成</li><li><span>3</span>导出 Excel</li></ol>
       <fieldset disabled={locked} className="plain-fieldset">
         <div className="field-row">
           <div className="field"><label htmlFor="country">销售国家</label><select id="country" required value={country} onChange={(event) => setCountry(event.target.value)}><option value="" disabled>选择店铺所在的市场</option>{countries.map((code) => <option value={code} key={code}>{countryName(code)}</option>)}</select></div>
@@ -157,7 +186,7 @@ export default function StoresPage() {
             reaches the same product list a recognised product does, so a store
             made of one typed name still gets its related SKUs. */}
         <div className="add-product">
-          <span className="lbl">没截图就填商品名 <span className="muted">截图和这里至少要有一边</span></span>
+          <span className="lbl">填写商品名 <span className="muted">与截图至少提供一种，也可一起补充</span></span>
           <div className="add-product-row">
             <input value={newProduct.name_cn} maxLength={120} placeholder="商品中文名（必填）"
               onChange={(event) => setNewProduct({ ...newProduct, name_cn: event.target.value })} />
@@ -187,9 +216,9 @@ export default function StoresPage() {
       {serviceReady === null && <p className="muted" role="status">正在连接分析服务…</p>}
       {serviceReady === false && <p className="notice warn">分析服务暂未就绪，请联系维护人员。已选图片会保留。</p>}
       {error && <p className="notice error" role="alert">{error}</p>}
-      <div className="form-actions"><button className="btn" disabled={busy || !serviceReady || !country || (!picked.length && !products.length)} onClick={submit}>{busy ? "正在处理…" : savedId ? "继续生成" : "生成经营建议"}</button>{savedId && <Link className="btn ghost" to={`/stores/${savedId}`}>查看已保存资料</Link>}</div>
+      <div className="form-actions"><button className="btn" disabled={busy || !serviceReady || !country || (!picked.length && !products.length)} onClick={submit}>{busy ? "正在提交…" : savedId ? "继续生成" : "开始生成"}</button><span className="muted">生成期间可先阅读店铺分析</span>{savedId && <Link className="btn ghost" to={`/stores/${savedId}`}>查看已保存资料</Link>}</div>
     </section>
-    <section className="card"><h2>已有分析</h2>{storesLoading ? <p className="muted" role="status">正在加载…</p> : storesError ? <p className="notice error" role="alert">{storesError}</p> : stores.length === 0 ? <p className="muted">分析会保存在这里，之后可以继续查看。</p> : <div className="store-grid">{stores.map((store) => <Link className="store-item" key={store.id} to={`/stores/${store.id}`}><strong>{store.store_name}</strong><small>{countryName(store.country)} · {store.images.length ? `${store.images.length} 张截图` : "无截图"} · {store.stages.retrieval ? "查看商品推荐" : store.stages.synthesis ? "查看经营建议" : "继续生成"}</small></Link>)}</div>}</section>
-    <PhotoViewer photos={picked.map((item) => ({ src: item.url, label: item.file.name }))} index={shot} onIndex={setShot} onClose={() => setShot(null)} />
+    {creating && <PhotoViewer photos={picked.map((item) => ({ src: item.url, label: item.file.name }))} index={shot} onIndex={setShot} onClose={() => setShot(null)} />}
+    </div>
   </>;
 }

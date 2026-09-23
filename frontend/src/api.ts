@@ -74,12 +74,8 @@ export interface Params {
   expansion_terms: number;
   recall_limit: number;
   stock_filter: string;
-  /** "drop" removes candidates the model is sure are unrelated; "mark_only" names them and keeps them. */
-  rerank: string;
   /** Who answers: "jev" (near-free, the default), "deepseek" (paid), "off". */
   rerank_provider: string;
-  /** How sure "unrelated" has to be, as a percentage, before it is removed. */
-  rerank_cutoff: number;
   /** How much freedom the writing model gets. */
   temperature: number;
 }
@@ -102,6 +98,8 @@ export interface ParamSchema {
 }
 
 export interface StoreSummary {
+  job_status?: JobStatus | null;
+  needs_update?: boolean;
   id: string;
   store_name: string;
   country: string;
@@ -110,6 +108,7 @@ export interface StoreSummary {
 }
 
 export interface StoreDetail {
+  export_blocked_reason?: string;
   id: string;
   store: { store_name: string; country: string; images: Screenshot[] };
   stages: StageProgress;
@@ -373,8 +372,9 @@ export const api = {
 
   retrieval: (id: string) => call<Retrieval>(`/stores/${id}/retrieval`),
 
-  exportAdoption: (id: string, picks: Pick[], fallback: string, dedupe: boolean) =>
-    save(`/stores/${id}/adoption/export`, { picks, dedupe }, fallback),
+  exportAdoption: (id: string, picks: Pick[], fallback: string, relatedOnly: boolean) =>
+    save(`/stores/${id}/adoption/export`, { picks, related_only: relatedOnly },
+         fallback),
 
   imageUrl: (id: string, filename: string) =>
     `${BASE}/stores/${id}/images/${encodeURIComponent(filename)}`,

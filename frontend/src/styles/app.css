@@ -222,6 +222,11 @@ section h2 { margin: 0 0 14px; color: var(--navy); font-size: 19px; }
 .actions { margin: 0; padding-left: 22px; color: #40516a; }
 .actions li { margin-bottom: 6px; }
 
+/* A second subject inside one card. The rule is what keeps them from reading
+   as one long answer now that they share a heading. */
+.card-part { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--line); }
+.card-part > .sub:first-child { margin-top: 0; }
+
 .lbl {
   display: inline-block; margin-right: 8px; padding: 1px 7px; border-radius: 6px;
   color: #0a6396; background: var(--accent-soft); font-size: 12px; font-weight: 700;

@@ -54,8 +54,23 @@ SCENE_SYSTEM = STORE_RULES + """
 场景之间要拉开：覆盖稳定基础需求和合理相邻需求，不要几个场景写得很像。
 输出严格 JSON，顶层字段必须为：model、scenes。
 model 固定为 deepseek-flash。
-每个 scenes 元素必须且只能含 scene_name、audience、user_need、evidence 四个字段，不要输出 product_needs。
-user_need 要说清楚是什么情况下要解决什么事。"""
+每个 scenes 元素必须且只能含 scene_name、audience、user_need、evidence、scope_in、scope_out 六个字段，不要输出 product_needs。
+user_need 要说清楚是什么情况下要解决什么事。
+scope_in 写这次活动里实际要做的事，4 到 6 条，按「做什么」归类——迎宾、仪式、布置、赠礼、收纳这种颗粒度，一条一个动作，不要写商品名、品类或品牌，也不要写成句子。
+scope_out 写紧挨着这个场景、但不属于它的需求，2 到 4 条：谁在什么情况下会顺手用上、但这次活动本身不包含。这两条清单是后面判断「一件商品在这个场景里用不用得上」的边界，写清楚比写多更重要。
+scope_in 和 scope_out 只写这个场景自己的，不要几个场景共用一套。"""
+
+# What a scene is made of. The four prose fields describe it to a reader; the two
+# scope lists are what the scene's recalled SKUs are later judged against, and
+# they are the only part of a scene that is not read by a person. They are asked
+# for here because this is where a scene is written: a scope written anywhere
+# else would have to be reconciled with the scene it claims to describe.
+SCENE_TEXT_FIELDS = ("scene_name", "audience", "user_need", "evidence")
+SCENE_SCOPE_FIELDS = ("scope_in", "scope_out")
+# A list, not a count: a scene that names three areas instead of five has still
+# scoped itself, and failing the whole stage over it would throw away the call.
+# This only keeps the shape usable and bounded.
+SCOPE_MAX = 8
 
 SYNTHESIS_SYSTEM = STORE_RULES + """
 这一步写店铺结论。这时候还没有场景，输入里只有截图识别出来的商品、运营的排除名单、截图里读到的销售证据和店铺字段，就基于这些写。
@@ -319,6 +334,7 @@ def assemble(scenes: dict, products: list[dict], synthesis: dict) -> dict:
             "audience": scene.get("audience", ""),
             "user_need": scene.get("user_need", ""),
             "evidence": scene.get("evidence", ""),
+            **{key: scene[key] for key in SCENE_SCOPE_FIELDS if scene.get(key)},
             "product_needs": by_scene.get(name, []),
         })
     return {
@@ -333,6 +349,20 @@ def assemble(scenes: dict, products: list[dict], synthesis: dict) -> dict:
     }
 
 
+def _scope_lines(value) -> list[str]:
+    """The usable lines of a scope list, dropping anything that is not one.
+
+    Returns the kept lines rather than a yes or no, because both callers want the
+    same thing: validation asks whether anything is left, normalization keeps
+    what there is. A line the model wrote as a sentence with a stray blank is
+    still a line; a line that is not text is not.
+    """
+    if not isinstance(value, list) or len(value) > SCOPE_MAX:
+        return []
+    return [line.strip() for line in value
+            if isinstance(line, str) and line.strip()]
+
+
 def validate_scenes(value: dict, *, scene_count: int = 6) -> None:
     if set(value) != {"model", "scenes"} or value["model"] != MODEL:
         raise ValueError("unexpected scene response")
@@ -340,10 +370,17 @@ def validate_scenes(value: dict, *, scene_count: int = 6) -> None:
     if not max(1, scene_count - 2) <= len(scenes) <= scene_count + 2:
         raise ValueError(f"expected about {scene_count} scenes, got {len(scenes)}")
     for scene in scenes:
-        if set(scene) != {"scene_name", "audience", "user_need", "evidence"}:
+        # The scope lists are optional here because they were added after scenes
+        # were already being written, and a reading assembled before then is
+        # still a reading. Everything else about the contract is unchanged.
+        if (not set(SCENE_TEXT_FIELDS) <= set(scene)
+                <= set(SCENE_TEXT_FIELDS) | set(SCENE_SCOPE_FIELDS)):
             raise ValueError(f"scene fields mismatch: {sorted(scene)}")
-        if not all(scene[field].strip() for field in scene):
+        if not all(scene[field].strip() for field in SCENE_TEXT_FIELDS):
             raise ValueError("a scene field is empty")
+        for field in SCENE_SCOPE_FIELDS:
+            if field in scene and not _scope_lines(scene[field]):
+                raise ValueError(f"invalid {field}")
     if len({scene["scene_name"] for scene in scenes}) != len(scenes):
         raise ValueError("two scenes share a name")
 
@@ -469,7 +506,7 @@ def validate(value: dict, *, scene_count: int = 6, products_per_scene: int = 10)
     )})
     validate_scenes(
         {"model": MODEL, "scenes": [
-            {key: scene[key] for key in ("scene_name", "audience", "user_need", "evidence")}
+            {key: scene[key] for key in (*SCENE_TEXT_FIELDS, *SCENE_SCOPE_FIELDS) if key in scene}
             for scene in value.get("scenes") or []
         ]},
         scene_count=scene_count,
@@ -480,15 +517,20 @@ def validate(value: dict, *, scene_count: int = 6, products_per_scene: int = 10)
 
 
 def normalize_scenes(value: dict) -> list[dict]:
-    """Keep the four contracted fields, dropping anything the model volunteered."""
+    """Keep the contracted fields, dropping anything the model volunteered."""
     scenes = []
     for scene in value.get("scenes") or []:
         if not isinstance(scene, dict):
             raise ValueError("a scene is not an object")
-        fields = {key: scene.get(key) for key in ("scene_name", "audience", "user_need", "evidence")}
+        fields = {key: scene.get(key) for key in SCENE_TEXT_FIELDS}
         if any(not isinstance(text, str) or not text.strip() for text in fields.values()):
             raise ValueError(f"scene fields missing: {sorted(scene)}")
-        scenes.append({key: text.strip() for key, text in fields.items()})
+        record = {key: text.strip() for key, text in fields.items()}
+        for key in SCENE_SCOPE_FIELDS:
+            lines = _scope_lines(scene.get(key))
+            if lines:
+                record[key] = lines
+        scenes.append(record)
     return scenes
 
 

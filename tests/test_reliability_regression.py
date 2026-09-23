@@ -238,8 +238,8 @@ class VerdictTests(unittest.TestCase):
 
     def test_failed_scene_does_not_remove_candidates_or_other_scene_verdicts(self):
         roles=[{'scene_name':'bad','candidates':rows()},{'scene_name':'good','candidates':rows()}]
-        def ask(name, roles):
-            if name=='bad': raise RuntimeError('offline')
+        def ask(scene, roles):
+            if scene['scene_name']=='bad': raise RuntimeError('offline')
             return {sku:{'verdict':'related','probability':.8} for sku in ('A','B')},{}
         result,summary=rerank.rerank_scenes(roles,ask=ask,cutoff=.5,drop=True)
         self.assertEqual(summary['failed'],1); self.assertEqual(summary['answered'],2)
@@ -250,7 +250,7 @@ class VerdictTests(unittest.TestCase):
         responses=[{'choices':[{'message':{'content':'{"unrelated":[]}'},'finish_reason':'stop'}]},
                    {'choices':[{'message':{'content':'{}'},'finish_reason':'stop'}]}]
         with patch.object(providers,'DEEPSEEK_SLICE',2), patch.object(providers,'_post',side_effect=responses):
-            result,usage=providers.ask_deepseek('s',roles,api_key='fixture')
+            result,usage=providers.ask_deepseek({'scene_name':'s'},roles,api_key='fixture')
         self.assertEqual(result['A']['verdict'],'related'); self.assertIsNone(result['C']['verdict'])
         self.assertEqual(usage['_failed_slices'],1)
 
@@ -258,7 +258,7 @@ class VerdictTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             response={'choices':[{'message':{'content':'{"unrelated":[]}'},'finish_reason':'length'}]}
             with patch.object(providers,'_post',return_value=response):
-                result,usage=providers.ask_deepseek('s',[{'candidates':[{'main_sku':'A','standard_name_en':'A'}]}],
+                result,usage=providers.ask_deepseek({'scene_name':'s'},[{'candidates':[{'main_sku':'A','standard_name_en':'A'}]}],
                                                     api_key='fixture',cache_dir=Path(directory))
             self.assertIsNone(result['A']['verdict']); self.assertEqual(list(Path(directory).glob('*.json')),[])
 
@@ -267,10 +267,10 @@ class VerdictTests(unittest.TestCase):
             path=Path(directory); roles=[{'candidates':[{'main_sku':'A','standard_name_en':'A'}]}]
             response={'choices':[{'message':{'content':'{"unrelated":[]}'},'finish_reason':'stop'}]}
             with patch.object(providers,'_post',return_value=response):
-                providers.ask_deepseek('s',roles,api_key='fixture',cache_dir=path)
+                providers.ask_deepseek({'scene_name':'s'},roles,api_key='fixture',cache_dir=path)
             cache=next(path.glob('*.json')); cache.write_text('broken')
             with patch.object(providers,'_post',return_value=response) as call:
-                result,_=providers.ask_deepseek('s',roles,api_key='fixture',cache_dir=path)
+                result,_=providers.ask_deepseek({'scene_name':'s'},roles,api_key='fixture',cache_dir=path)
             self.assertEqual(call.call_count,1); self.assertEqual(result['A']['verdict'],'related')
             self.assertIn('content',json.loads(cache.read_text()))
 
@@ -279,7 +279,7 @@ class VerdictTests(unittest.TestCase):
         roles=[{'candidates':[{'main_sku':'A','standard_name_en':'A'}]}]
         for body in ([],None,{}, {'choices':[None]}, {'choices':[{'message':[]}]}):
             with self.subTest(body=body), patch.object(providers,'_post',return_value=body):
-                result,usage=providers.ask_deepseek('s',roles,api_key='fixture')
+                result,usage=providers.ask_deepseek({'scene_name':'s'},roles,api_key='fixture')
                 self.assertIsNone(result['A']['verdict'])
                 self.assertEqual(usage['_failed_slices'],1)
 
@@ -291,8 +291,8 @@ class VerdictTests(unittest.TestCase):
         roles=[{'candidates':[{'main_sku':'A','standard_name_en':'A'}]}]
         with tempfile.TemporaryDirectory() as directory:
             with patch.object(providers,'_post',return_value={'answers':{}}) as call:
-                result,usage=providers.ask_typesafe('s',roles,api_key='fixture',cache_dir=Path(directory))
-                again,_=providers.ask_typesafe('s',roles,api_key='fixture',cache_dir=Path(directory))
+                result,usage=providers.ask_typesafe({'scene_name':'s'},roles,api_key='fixture',cache_dir=Path(directory))
+                again,_=providers.ask_typesafe({'scene_name':'s'},roles,api_key='fixture',cache_dir=Path(directory))
             self.assertIsNone(result['A']['verdict'])
             self.assertIsNone(again['A']['verdict'])
             self.assertEqual(usage['_failed_slices'],1)
@@ -304,11 +304,11 @@ class VerdictTests(unittest.TestCase):
                                'probabilities':{'related':.9}}}}
         with tempfile.TemporaryDirectory() as directory:
             with patch.object(providers,'_post',return_value=valid):
-                providers.ask_typesafe('s',roles,api_key='fixture',cache_dir=Path(directory))
+                providers.ask_typesafe({'scene_name':'s'},roles,api_key='fixture',cache_dir=Path(directory))
             cached=next(Path(directory).glob('*.json'))
             cached.write_text('{"answers":{}}')
             with patch.object(providers,'_post',return_value=valid) as call:
-                result,_=providers.ask_typesafe('s',roles,api_key='fixture',cache_dir=Path(directory))
+                result,_=providers.ask_typesafe({'scene_name':'s'},roles,api_key='fixture',cache_dir=Path(directory))
             self.assertEqual(call.call_count,1)
             self.assertEqual(result['A']['verdict'],'related')
 

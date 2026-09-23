@@ -4,13 +4,13 @@
 
 2026-09-18 已接通 DeepSeek Flash 批量链路：钉钉店铺字段与内嵌截图读取、截图商品识别、店铺与场景分析、正向中英文扩写、中文/英文向量与 FTS5 四路加权 RRF、DeepSeek 软重排、国家库存关联和 Excel 导出。当前交付为光旅 10 店与集团八部 PH/TH/VN/MY 10 店；GPT-5.5 结果只保留为历史对照。运行资产位于 `E:/Project/store-assortment-copilot/var/pilot`，完整业务规划见 [2026-09-18 生产化规划](E:/Project/store-assortment-copilot/docs/2026-09-18-store-analysis-rag-roadmap.md)。
 
-本地前端为 React 工作台：选择国家 + 截图或商品名 → 一键生成经营建议与候选商品 → 按需调整与勾选 → 导出 Excel；没有识别后的人工确认关卡。流程见 [完整流程](docs/2026-09-22-flow-and-branches.md)，尚未接入应用的新 UI 方案见 [导出优先设计](docs/2026-09-22-export-first-design.md)。
+本地前端为 React 工作台：选择国家 + 截图或商品名 → 一键生成经营建议与候选商品 → 按需调整与勾选 → 导出 Excel；没有识别后的人工确认关卡。流程见 [完整流程](docs/2026-09-22-flow-and-branches.md)。工作区与回退版本的恢复入口见 [UI 基准说明](docs/2026-09-22-ui-baseline.md)；已接入“首页管理店铺、完整分析与侧栏导航、场景默认全选、页尾导出”的实现说明见 [导出优先设计](docs/2026-09-22-export-first-design.md)。
 
 ```powershell
 # 后端：FastAPI，监听 127.0.0.1:8000
-# 开发时加 --reload：改完后端代码它会自己重启。不加的话进程还跑着旧代码，
-# 而前端已经按新接口取字段，点开店铺会白屏。
-uv run uvicorn store_scenario_inspiration.app.main:create_app --factory --port 8000 --reload
+# 在 UI 工作区执行，保留当前页面的数据目录；后端改码后重启此进程。
+$env:SSI_DATA_DIR = Join-Path (Get-Location) 'var/demo'
+.venv/Scripts/python.exe -m uvicorn store_scenario_inspiration.app.main:create_app --factory --host 127.0.0.1 --port 8000
 
 # 前端：Vite + React，开发端口 5173，/api 由 Vite 代理到 8000，因此不需要配 CORS
 cd frontend

@@ -83,10 +83,16 @@ class Pick(BaseModel):
 
 
 class AdoptionPicks(BaseModel):
-    """What to write out, and whether to collapse each SKU onto one line."""
+    """What to write out, and how hard to act on the model's doubts.
+
+    ``related_only`` is the one place a row can be left out for being doubted,
+    and it is a tick rather than a setting: the candidates are always read with
+    everything still in them, so this decides what goes in the file, not what
+    the run did.
+    """
 
     picks: list[Pick] = Field(default_factory=list)
-    dedupe: bool = False
+    related_only: bool = False
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -164,7 +170,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/stores")
     def list_stores() -> dict:
-        return {"stores": workspace.listing()}
+        stores = workspace.listing()
+        for store in stores:
+            job = jobs.newest(store["id"])
+            store["job_status"] = job["status"] if job else None
+            store["needs_update"] = bool(workspace.outdated(
+                store["id"], load_params(workspace.path(store["id"], "params.json")).model_dump()))
+        return {"stores": stores}
 
     @app.get("/api/stores/{store_id}")
     def get_store(store_id: str) -> dict:
@@ -373,36 +385,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         every child a product has; the quantities come from the snapshot this
         run was bound to, so the sheet and the candidates agree.
         """
-        retrieval = _require(workspace, store_id, "retrieval.json")
-        analysis = _require(workspace, store_id, "deepseek_analysis.json")
-        # The per-child quantities are written by the same pass that wrote the
-        # candidates, so a run from before that existed has none. Re-running the
-        # recall is local and free; a 货号 with no children would not be.
-        children_path = workspace.path(store_id, "stock_children.json")
-        if not children_path.is_file():
-            raise HTTPException(409, "这次结果里没有子款库存明细，请重新执行「找商品」后再导出。")
-        children = read_json(children_path)
-        entry = workspace.entry(store_id)
-        picks = [pick.model_dump() for pick in body.picks]
-        picked = picked_by_sku(analysis, retrieval, picks)
-        stock = children.get("quantities") if children.get("available") else None
-        notes = notes_for(
-            retrieval=retrieval,
-            params=load_params(workspace.path(store_id, "params.json")).model_dump(),
-            store=entry, store_id=store_id,
-            stock_path=settings.stock, exported=len(picked),
-        )
-        name = f"{entry.get('store_name') or store_id}-店铺场景报告.xlsx"
-        return Response(
-            content=workbook(scene_blocks(analysis, retrieval, picks),
-                             summaries(analysis, entry, retrieval.get("country") or ""),
-                             notes, country=retrieval.get("country") or "",
-                             children=child_rows(
-                                 picked, load_children(settings.asset_db, picked), stock),
-                             deduped=deduped_rows(picked) if body.dedupe else None),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"},
-        )
+        with closing(StoreLease(workspace.path(store_id, ".pipeline.lock"))):
+            retrieval = _require(workspace, store_id, "retrieval.json")
+            analysis = _require(workspace, store_id, "deepseek_analysis.json")
+            # The per-child quantities are written by the same pass that wrote the
+            # candidates, so a run from before that existed has none. Re-running the
+            # recall is local and free; a 货号 with no children would not be.
+            children_path = workspace.path(store_id, "stock_children.json")
+            if not children_path.is_file():
+                raise HTTPException(409, "这次结果里没有子款库存明细，请更新商品匹配后再导出。")
+            params = load_params(workspace.path(store_id, "params.json"))
+            blocked = _export_blocked_reason(workspace, jobs, store_id, workspace.outdated(store_id, params.model_dump()))
+            if blocked:
+                raise HTTPException(409, blocked)
+            children = read_json(children_path)
+            entry = workspace.entry(store_id)
+            picks = [pick.model_dump() for pick in body.picks]
+            picked = picked_by_sku(analysis, retrieval, picks)
+            stock = children.get("quantities") if children.get("available") else None
+            notes = notes_for(
+                retrieval=retrieval,
+                params=load_params(workspace.path(store_id, "params.json")).model_dump(),
+                store=entry, store_id=store_id,
+                stock_path=settings.stock, exported=len(picked),
+                related_only=body.related_only,
+            )
+            name = f"{entry.get('store_name') or store_id}-店铺场景报告.xlsx"
+            return Response(
+                content=workbook(scene_blocks(analysis, retrieval, picks),
+                                 summaries(analysis, entry, retrieval.get("country") or ""),
+                                 notes, country=retrieval.get("country") or "",
+                                 children=child_rows(
+                                     picked, load_children(settings.asset_db, picked), stock),
+                                 deduped=deduped_rows(picked)),
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"},
+            )
 
     return app
 
@@ -444,10 +462,26 @@ def _rebuild_clues(workspace: Workspace, settings: Settings, store_id: str) -> N
                   load_params(workspace.path(store_id, "params.json")))
 
 
+def _export_blocked_reason(workspace: Workspace, jobs: JobManager, store_id: str, outdated: list[str]) -> str:
+    job = jobs.newest(store_id)
+    if job and job["status"] in {"pending", "running"}:
+        return "商品仍在生成或更新，完成后即可导出。"
+    if not workspace.path(store_id, "retrieval.json").is_file():
+        return "商品匹配完成后即可导出。"
+    if not workspace.path(store_id, "stock_children.json").is_file():
+        return "这次结果缺少子款库存明细，请更新商品匹配后再导出。"
+    if outdated:
+        return "资料或设置已变化，请更新结果后再导出。"
+    return ""
+
+
 def _store_payload(workspace: Workspace, jobs: JobManager, store_id: str) -> dict:
     entry = workspace.entry(store_id)
     clues_path = workspace.path(store_id, "clues.json")
     params = load_params(workspace.path(store_id, "params.json"))
+    outdated = workspace.outdated(store_id, params.model_dump())
+    if workspace.path(store_id, "retrieval.json").is_file() and not workspace.path(store_id, "stock_children.json").is_file():
+        outdated = list(dict.fromkeys([*outdated, "retrieval", "rerank"]))
     return {
         "id": store_id,
         "store": entry,
@@ -456,7 +490,8 @@ def _store_payload(workspace: Workspace, jobs: JobManager, store_id: str) -> dic
         # What the page turns into a single button: the steps that no longer
         # describe this store, so the operator answers "what changed" by having
         # changed it rather than by knowing the pipeline.
-        "outdated": workspace.outdated(store_id, params.model_dump()),
+        "outdated": outdated,
+        "export_blocked_reason": _export_blocked_reason(workspace, jobs, store_id, outdated),
         "kept_clues": kept_clues(read_json(clues_path)) if clues_path.is_file() else [],
         "excluded_clues": excluded_clues(read_json(clues_path)) if clues_path.is_file() else [],
         "job": jobs.newest(store_id),

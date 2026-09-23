@@ -21,10 +21,10 @@ STOCK_ALL = "all"
 STOCK_IN_ONLY = "in_stock"
 STOCK_FILTERS = (STOCK_ALL, STOCK_IN_ONLY)
 
-RERANK_DROP = "drop"
+# The only thing a verdict pass does now: name the doubt and keep the row. The
+# operator decides at export whether to act on it, which is why "drop" is no
+# longer a mode anyone can pick.
 RERANK_MARK_ONLY = "mark_only"
-# Marking first: it is the default, and the form reads the tuple top to bottom.
-RERANK_MODES = (RERANK_MARK_ONLY, RERANK_DROP)
 
 RERANK_DEEPSEEK = "deepseek"
 RERANK_JEV = "jev"
@@ -39,8 +39,6 @@ DEFAULTS = {
     "expansion_terms": 0,
     "recall_limit": 30,
     "stock_filter": STOCK_ALL,
-    "rerank": RERANK_MARK_ONLY,
-    "rerank_cutoff": 50,
     "rerank_provider": RERANK_JEV,
     "temperature": 0.2,
 }
@@ -52,13 +50,6 @@ CHOICES = {
         {
             STOCK_ALL: "都留着，标出有没有货",
             STOCK_IN_ONLY: "只看目标国家有货的",
-        },
-    ),
-    "rerank": (
-        RERANK_MODES,
-        {
-            RERANK_MARK_ONLY: "不排除，都留着（只标出来）",
-            RERANK_DROP: "排除，不相关的去掉",
         },
     ),
     "rerank_provider": (
@@ -110,17 +101,6 @@ class SearchParams(BaseModel):
             "会被一起筛掉、事后看不出来。"
         ),
     )
-    rerank: str = Field(
-        default=RERANK_MARK_ONLY, pattern="^(drop|mark_only)$",
-        description=(
-            "召回之后，模型会逐个场景看一遍：这个商品和这个场景相不相关，"
-            "标上「相关」或「不相关」。它只是怀疑，不是判决。"
-            "不排除（默认）：一条都不删，只打标记。排除：标为不相关的直接从列表里去掉。"
-            "排除这一档要小心——实测它会把整个商品剔空：泰国店的「驱蚊液」召回回来的"
-            "灭蚊灯、灭螨驱蚊虫仪、捕虫器全被标成不相关去掉，这个商品最后一条候选都不剩。"
-            "去掉的那些仍然记在文件里。"
-        ),
-    )
     rerank_provider: str = Field(
         default=RERANK_JEV, pattern="^(jev|deepseek|off)$",
         description=(
@@ -129,15 +109,6 @@ class SearchParams(BaseModel):
             "跑完一遍的花费基本可以忽略；它输出的是概率，比一句话结论更靠得住。"
             "DeepSeek：按量付费，跑完一遍大约几毛钱。"
             "不要：候选列表就是纯搜出来的结果，一样能挑。随时可以换。"
-        ),
-    )
-    rerank_cutoff: int = Field(
-        default=50, ge=50, le=95,
-        description=(
-            "模型说一条不相关时，它自己有多确定才当真，单位是百分比。"
-            "判定只有相关、不相关两档，50 就是模型自己那一档直接认——"
-            "它说不相关就信它；调高更保守，要它更笃定才算数。"
-            "只对「排除」这一档有实际影响——选「不排除」的时候，标多标少都不动列表。"
         ),
     )
     temperature: float = Field(

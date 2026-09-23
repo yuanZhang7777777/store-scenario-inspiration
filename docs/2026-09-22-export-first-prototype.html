@@ -1,523 +1,429 @@
-<meta charset="utf-8">
 <style>
-#metis-export-study{--mx-bg:light-dark(#f3f7fb,#121a23);--mx-panel:light-dark(#fff,#1a222d);--mx-text:light-dark(#0f2230,#e4eef7);--mx-muted:light-dark(#5b6f7c,#a3b8c6);--mx-line:light-dark(#dbe6ed,#2c3c48);--mx-soft:light-dark(#e9f1f8,#212f3a);--mx-accent:#0a8fd4;--mx-accent-lift:#4fb9ec;--mx-accent-ink:#0a6396;--mx-accent-deep:#03253d;--mx-accent-soft:#81c8e8;--mx-radius:16px;color:var(--mx-text);font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;background:var(--mx-bg);border:1px solid var(--mx-line);border-radius:20px;overflow:hidden;text-align:left;isolation:isolate}
+#metis-export-study{--mx-bg:light-dark(#f4f7fa,#101821);--mx-panel:light-dark(#ffffff,#182330);--mx-ink:light-dark(#183247,#e4edf6);--mx-muted:light-dark(#5b6e7e,#adbdcd);--mx-line:light-dark(#dce5ec,#344454);--mx-blue:light-dark(#0a6396,#8bcfff);--mx-soft:light-dark(#edf6fc,#20384a);--mx-button:light-dark(#0a8fd4,#9ad6ff);--mx-button-light:light-dark(#4fb9ec,#b7e2ff);--mx-on-button:light-dark(#03253d,#102b40);--mx-error:light-dark(#ac382c,#ffaea4);color:var(--mx-ink);background:var(--mx-bg);font:15px/1.55 "Segoe UI","Microsoft YaHei",sans-serif;padding:22px;border-radius:14px;--mx-gap:20px}
 #metis-export-study *{box-sizing:border-box}
 #metis-export-study [hidden]{display:none!important}
 #metis-export-study h1,#metis-export-study h2,#metis-export-study h3,#metis-export-study p{margin:0}
-#metis-export-study button,#metis-export-study input,#metis-export-study select,#metis-export-study textarea{font:inherit}
-#metis-export-study button{color:inherit}
-#metis-export-study button:disabled{opacity:.45;cursor:not-allowed}
-#metis-export-study button:focus-visible,#metis-export-study input:focus-visible,#metis-export-study textarea:focus-visible,#metis-export-study select:focus-visible,#metis-export-study summary:focus-visible{outline:3px solid #0a8fd4;outline-offset:3px}
-#metis-export-study button{cursor:var(--cursor-interaction,pointer)}
-#metis-export-study .mx-top{display:flex;align-items:center;gap:16px;padding:19px 26px;background:var(--mx-panel);border-top:3px solid var(--mx-accent);border-bottom:1px solid var(--mx-line)}
-#metis-export-study .mx-brand{font:24px Georgia,serif;letter-spacing:.13em;display:flex;align-items:center;gap:10px;white-space:nowrap}
-#metis-export-study .mx-brand svg{color:var(--mx-accent);width:24px;height:24px}
-#metis-export-study .mx-brand-sub{border-left:1px solid var(--mx-line);padding-left:16px;color:var(--mx-muted);font-size:13px}
-#metis-export-study .mx-sample{margin-left:auto;padding:4px 9px;border-radius:6px;background:var(--mx-soft);color:var(--mx-muted);font-size:12px;white-space:nowrap}
-#metis-export-study .mx-nav{display:flex;gap:6px;padding:11px 26px;border-bottom:1px solid var(--mx-line);background:var(--mx-panel)}
-#metis-export-study .mx-nav button{background:transparent;border:0;border-radius:99px;padding:7px 16px;color:var(--mx-muted);font-size:13px}
-#metis-export-study .mx-nav button[aria-pressed=true]{background:var(--mx-soft);color:var(--mx-accent-ink);font-weight:500}
-#metis-export-study .mx-page{padding:26px}
-#metis-export-study .mx-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px}
-#metis-export-study .mx-heading h1{font-size:25px;font-weight:600;letter-spacing:-.03em;line-height:1.4}
-#metis-export-study .mx-heading p{margin-top:6px;color:var(--mx-muted);font-size:13px}
-#metis-export-study .mx-ready{font-size:13px;color:light-dark(#277252,#83d5b0);display:flex;align-items:center;gap:7px;white-space:nowrap}
-#metis-export-study .mx-ready i{display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor}
-/* The store list is the entry point: it has to answer "did this shop finish?" at a glance. */
-#metis-export-study .mx-store-list{display:grid;gap:12px}
-#metis-export-study .mx-store{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:17px 20px;background:var(--mx-panel);border:1px solid var(--mx-line);border-radius:var(--mx-radius)}
-#metis-export-study .mx-store-name{display:flex;align-items:center;gap:9px;font-size:16px;font-weight:600;flex-wrap:wrap}
-#metis-export-study .mx-store-flag{font-size:12px;font-weight:400;color:var(--mx-muted);border:1px solid var(--mx-line);border-radius:99px;padding:1px 8px}
-#metis-export-study .mx-store-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--mx-muted)}
-#metis-export-study .mx-store-status{display:inline-flex;align-items:center;gap:7px;font-weight:500}
-#metis-export-study .mx-store-status.is-live{color:var(--mx-accent-ink)}
-#metis-export-study .mx-store-status.is-done{color:light-dark(#277252,#83d5b0)}
-#metis-export-study .mx-store-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
-#metis-export-study .mx-store-status.is-live .mx-store-dot{animation:mx-breathe 1.6s ease-in-out infinite}
-@keyframes mx-breathe{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
-#metis-export-study .mx-store-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}
-#metis-export-study .mx-store-actions .mx-button{padding:8px 15px;min-height:38px;font-size:13px}
-#metis-export-study .mx-store-steps{display:inline-flex;gap:4px;margin-right:5px}
-#metis-export-study .mx-store-steps i{width:22px;height:4px;border-radius:2px;background:var(--mx-line)}
-#metis-export-study .mx-store-steps i[data-on=true]{background:var(--mx-accent)}
-#metis-export-study .mx-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:20px;align-items:start}
-#metis-export-study .mx-panel{background:var(--mx-panel);border:1px solid var(--mx-line);border-radius:var(--mx-radius);overflow:hidden}
-#metis-export-study .mx-panel-top{padding:18px 20px;border-bottom:1px solid var(--mx-line);display:flex;justify-content:space-between;align-items:center;gap:10px}
-#metis-export-study .mx-panel-top h2{font-size:16px;font-weight:600}
-#metis-export-study .mx-switches{display:flex;flex-wrap:wrap;gap:18px;padding:0 20px;border-bottom:1px solid var(--mx-line)}
-#metis-export-study .mx-switches button{background:none;border:0;border-bottom:2px solid transparent;padding:14px 0;color:var(--mx-muted);font-size:14px}
-#metis-export-study .mx-switches button[aria-pressed=true]{border-bottom-color:var(--mx-accent);color:var(--mx-text)}
-/* Two bands, so "which scene" and "which SKUs it recalled" never read as one list. */
-#metis-export-study .mx-band-scene{background:color-mix(in srgb,var(--mx-accent) 14%,var(--mx-panel));padding:16px 20px 18px;border-bottom:2px solid color-mix(in srgb,var(--mx-accent) 30%,var(--mx-line))}
-#metis-export-study .mx-band-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
-#metis-export-study .mx-band-head h3{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
-#metis-export-study .mx-band-head h3::before{content:'';width:3px;height:13px;border-radius:2px;background:var(--mx-accent-ink)}
-#metis-export-study .mx-band-head span{color:var(--mx-muted);font-size:12px}
-#metis-export-study .mx-band-recall .mx-band-head{padding:16px 20px 0;margin-bottom:10px}
-#metis-export-study .mx-scene-nav{display:flex;gap:8px;flex-wrap:wrap}
-#metis-export-study .mx-scene-nav button{border:1px solid color-mix(in srgb,var(--mx-accent),transparent 55%);border-radius:10px;padding:8px 13px;background:var(--mx-panel);color:var(--mx-muted);display:grid;gap:3px;text-align:left;font-size:11px}
-#metis-export-study .mx-scene-nav button b{color:var(--mx-text);font-weight:500;font-size:13px}
-#metis-export-study .mx-scene-nav button[aria-pressed=true]{background:linear-gradient(150deg,var(--mx-accent-lift),var(--mx-accent));border-color:var(--mx-accent);color:var(--mx-accent-deep);box-shadow:0 5px 13px color-mix(in srgb,var(--mx-accent),transparent 62%)}
-#metis-export-study .mx-scene-nav button[aria-pressed=true] b{color:var(--mx-accent-deep)}
-#metis-export-study .mx-legend{display:flex;gap:7px;flex-wrap:wrap;padding:0 20px 8px}
-#metis-export-study .mx-chip{font-size:11px;line-height:1.6;border-radius:99px;padding:1px 7px;border:1px solid var(--mx-line);color:var(--mx-muted);white-space:nowrap}
-#metis-export-study .mx-chip-ok{border-color:color-mix(in srgb,var(--mx-accent-ink),transparent 55%);color:var(--mx-accent-ink)}
-#metis-export-study .mx-chip-no{border-color:color-mix(in srgb,light-dark(#b23f3b,#e79a96),transparent 55%);color:light-dark(#b23f3b,#e79a96)}
-#metis-export-study .mx-chip-unknown{border-style:dashed}
-#metis-export-study .mx-preview-note{font-size:12px;color:var(--mx-muted)}
-#metis-export-study .mx-table{border-collapse:collapse;width:100%;font-size:15px}
-#metis-export-study .mx-table th{color:var(--mx-muted);font-size:12px;font-weight:500;text-align:left;padding:9px 16px;border-top:1px solid var(--mx-line)}
-#metis-export-study .mx-table td{padding:14px 16px;border-bottom:1px solid var(--mx-line);vertical-align:middle}
-#metis-export-study .mx-table tr:last-child td{border:0}
-#metis-export-study .mx-table td:last-child,#metis-export-study .mx-table th:last-child{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-#metis-export-study .mx-name{display:block}
-#metis-export-study .mx-meta{display:flex;align-items:center;gap:7px;color:var(--mx-muted);margin-top:5px;font-size:11px}
-#metis-export-study .mx-dim{color:var(--mx-muted)}
-#metis-export-study .mx-sku{font:12px ui-monospace,Consolas,monospace;color:var(--mx-muted)}
-#metis-export-study .mx-empty{padding:34px 20px;text-align:center;color:var(--mx-muted)}
-#metis-export-study .mx-preview-footer{border-top:1px solid var(--mx-line);padding:12px 20px;display:flex;gap:8px;align-items:center;color:var(--mx-muted);font-size:12px}
-#metis-export-study .mx-preview-footer svg{width:15px;height:15px;flex-shrink:0}
-#metis-export-study .mx-export{padding:20px;background:linear-gradient(155deg,var(--mx-panel) 65%,var(--mx-soft));box-shadow:0 14px 35px -25px #0d2f4a70}
-#metis-export-study .mx-file{display:flex;align-items:center;gap:12px;padding-bottom:18px;border-bottom:1px solid var(--mx-line)}
-#metis-export-study .mx-file-icon{display:grid;place-items:center;width:44px;height:52px;background:var(--mx-soft);border:1px solid var(--mx-line);border-radius:8px;color:var(--mx-accent-ink)}
-#metis-export-study .mx-file strong{font-size:14px;font-weight:600;display:block}
-#metis-export-study .mx-file small{display:block;font-size:11px;color:var(--mx-muted);margin-top:3px}
-#metis-export-study .mx-export fieldset{border:0;padding:0;margin:20px 0}
-#metis-export-study .mx-export legend{font-size:12px;color:var(--mx-muted);margin-bottom:9px}
-#metis-export-study .mx-radio{display:flex;align-items:center;gap:8px;padding:9px 0;font-size:14px}
-#metis-export-study .mx-radio input{accent-color:var(--mx-accent);width:15px;height:15px;margin:0}
-#metis-export-study .mx-count{font-size:13px;color:var(--mx-muted);padding:0 0 16px}
-#metis-export-study .mx-count strong{color:var(--mx-text);font-weight:600}
-#metis-export-study .mx-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 18px;min-height:42px;border:1px solid var(--mx-line);border-radius:99px;background:var(--mx-panel);text-decoration:none;transition:transform .18s,box-shadow .18s;font-size:14px;font-weight:500}
-#metis-export-study .mx-button:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 5px 12px #0d244014}
-#metis-export-study .mx-button:active:not(:disabled){transform:translateY(1px)}
-#metis-export-study .mx-button.mx-primary{background:linear-gradient(150deg,var(--mx-accent-lift),var(--mx-accent));color:var(--mx-accent-deep);font-weight:600;border-color:color-mix(in srgb,var(--mx-accent),#fff 22%);box-shadow:0 2px 3px #04203d1f,0 10px 24px color-mix(in srgb,var(--mx-accent),transparent 52%),inset 0 1px 0 #ffffff73}
-#metis-export-study .mx-export .mx-button{width:100%;margin-bottom:9px}
-#metis-export-study .mx-button svg{width:16px;height:16px}
-#metis-export-study .mx-contents{margin-top:17px;font-size:12px;color:var(--mx-muted);line-height:1.9;border-top:1px solid var(--mx-line);padding-top:14px}
-#metis-export-study .mx-contents strong{color:var(--mx-text);font-weight:500}
-#metis-export-study .mx-analysis{padding:24px}
-#metis-export-study .mx-analysis h3{font-size:16px;font-weight:600;margin-bottom:8px}
-#metis-export-study .mx-analysis p{color:var(--mx-muted);font-size:15px;line-height:1.9;margin-bottom:24px}
-#metis-export-study .mx-analysis p:last-child{margin-bottom:0}
-#metis-export-study .mx-custom{padding:16px 20px}
-#metis-export-study .mx-custom details{border-bottom:1px solid var(--mx-line);padding:10px 0}
-#metis-export-study .mx-custom summary{font-size:14px;cursor:var(--cursor-interaction,pointer)}
-#metis-export-study .mx-custom label{display:flex;align-items:center;gap:8px;font-size:13px;padding:10px 0}
-#metis-export-study .mx-custom label input{accent-color:var(--mx-accent)}
-#metis-export-study .mx-text-button{border:0;background:transparent;color:var(--mx-accent-ink);font-size:12px;padding:5px 0}
-#metis-export-study .mx-input-panel{max-width:700px;margin:auto;padding:26px}
-#metis-export-study .mx-fields{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
-#metis-export-study .mx-fields label{display:grid;gap:7px;font-size:13px}
-#metis-export-study .mx-fields input,#metis-export-study .mx-fields select,#metis-export-study textarea{background:var(--mx-panel);color:var(--mx-text);border:1px solid var(--mx-line);border-radius:9px;padding:10px 12px;width:100%;font-size:15px}
-#metis-export-study .mx-drop{padding:30px 20px;text-align:center;border:1px dashed color-mix(in srgb,var(--mx-muted),transparent 50%);background:var(--mx-soft);border-radius:12px;margin-bottom:18px}
-#metis-export-study .mx-drop>svg{display:block;margin:0 auto 12px;color:var(--mx-accent-ink);width:28px;height:28px}
-#metis-export-study .mx-drop p{color:var(--mx-muted);font-size:13px;margin-top:7px}
-#metis-export-study .mx-label{display:block;margin-bottom:8px;font-size:13px}
-#metis-export-study textarea{resize:vertical;min-height:70px}
-#metis-export-study .mx-input-actions{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:20px;flex-wrap:wrap}
-#metis-export-study .mx-input-actions small{color:var(--mx-muted);font-size:12px}
-#metis-export-study .mx-input-hint{margin-top:16px;font-size:12px;color:var(--mx-muted)}
-#metis-export-study .mx-demo{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:9px 26px;background:var(--mx-panel);border-bottom:1px solid var(--mx-line);font-size:12px;color:var(--mx-muted)}
-#metis-export-study .mx-demo span{margin-right:auto}
-#metis-export-study .mx-demo button{border:0;background:transparent;font-size:12px;padding:7px 0;min-height:32px}
-#metis-export-study .mx-page{background:radial-gradient(ellipse at 85% 0%,light-dark(#e2eef8,#0f1e2c),transparent 65%)}
-#metis-export-study .mx-heading h1{font-family:Georgia,'Microsoft YaHei',serif;font-size:28px;letter-spacing:.02em}
-#metis-export-study .mx-monogram{width:24px;height:25px;display:inline-block;position:relative;transform:rotate(-8deg)}
-#metis-export-study .mx-monogram::before,#metis-export-study .mx-monogram::after{content:'';position:absolute;width:11px;height:24px;border-radius:6px 6px 2px 2px;background:linear-gradient(160deg,#b9dcf8,#0a8fd4);transform:skewY(-22deg);left:0;top:0}
-#metis-export-study .mx-monogram::after{left:13px;top:3px;background:linear-gradient(160deg,#7ac9ee,#045a86)}
-/* Original METIS paper-and-glass glyphs: no icon library or remote assets. */
-#metis-export-study .mx-glyph{display:inline-block;position:relative;width:76px;height:76px;flex:none;filter:drop-shadow(0 9px 7px #041f2b25)}
-#metis-export-study .mx-glyph span{position:absolute;display:block;border:1px solid #e2f2fb9c;box-shadow:inset 0 1px 1px #fff9,0 5px 12px #041a2426}
-#metis-export-study .mx-glyph span:nth-child(1){background:linear-gradient(135deg,#b6e4f5d9,#2f7bb0d9)}
-#metis-export-study .mx-glyph span:nth-child(2){background:linear-gradient(135deg,#e6f7ffed,#9fd8f0dc)}
-#metis-export-study .mx-glyph span:nth-child(3){background:linear-gradient(135deg,#f5fcff,#c2e4f5)}
-#metis-export-study .mx-glyph.mx-report span{width:37px;height:48px;left:20px;top:14px;border-radius:5px;transform:rotate(-17deg) translate(-7px,-2px)}
-#metis-export-study .mx-glyph.mx-report span:nth-child(2){transform:rotate(12deg) translate(7px,-1px)}
-#metis-export-study .mx-glyph.mx-report span:nth-child(3){transform:rotate(-3deg) translate(2px,7px)}
-#metis-export-study .mx-glyph.mx-report span:nth-child(3)::before{content:'';position:absolute;left:8px;top:10px;width:18px;height:3px;background:#0a7bb0;box-shadow:0 7px #8fc4e0,0 14px #b3dcf0}
-#metis-export-study .mx-glyph.mx-scene span{width:43px;height:34px;left:16px;top:22px;border-radius:6px;transform:translate(-10px,-12px) rotate(-14deg)}
-#metis-export-study .mx-glyph.mx-scene span:nth-child(2){transform:translate(10px,-3px) rotate(13deg)}
-#metis-export-study .mx-glyph.mx-scene span:nth-child(3){transform:translate(-1px,11px) rotate(-5deg);overflow:hidden}
-#metis-export-study .mx-glyph.mx-scene span:nth-child(3)::before{content:'';position:absolute;inset:9px 0 0;background:linear-gradient(135deg,#7fc4e8,#1272a8);clip-path:polygon(0 100%,0 80%,35% 13%,57% 63%,75% 30%,100% 77%,100% 100%)}
-#metis-export-study .mx-glyph.mx-scene span:nth-child(3)::after{content:'';position:absolute;width:7px;height:7px;right:8px;top:6px;border-radius:50%;background:#dbb779}
-#metis-export-study .mx-glyph.mx-product span{width:29px;height:30px;left:24px;top:8px;border-radius:5px;transform:rotate(-24deg) skew(7deg,7deg)}
-#metis-export-study .mx-glyph.mx-product span:nth-child(2){left:8px;top:34px}
-#metis-export-study .mx-glyph.mx-product span:nth-child(3){left:42px;top:31px}
-#metis-export-study .mx-glyph.mx-product span::before{content:'';position:absolute;top:1px;bottom:1px;left:12px;width:3px;background:#0a8fd43b}
-#metis-export-study .mx-glyph.mx-recall span{inset:8px;border:1px solid #9fd8f5;border-radius:50%;background:none;box-shadow:none;transform:rotate(-35deg) scaleY(.52)}
-#metis-export-study .mx-glyph.mx-recall span:nth-child(2){transform:rotate(45deg) scaleY(.52)}
-#metis-export-study .mx-glyph.mx-recall span:nth-child(3){inset:25px;transform:none;background:radial-gradient(circle at 32% 25%,#f2fbff,#9fdcff 44%,#0a8fd4);box-shadow:0 0 16px #8fcdf766}
-#metis-export-study .mx-glyph.mx-recall::after{content:'';position:absolute;left:9px;top:17px;width:7px;height:7px;border-radius:50%;background:#e6f2ff;box-shadow:45px 27px #9fc8e0}
-#metis-export-study .mx-glyph.mx-file span{width:37px;height:48px;left:18px;top:12px;border-radius:5px;transform:rotate(-10deg)}
-#metis-export-study .mx-glyph.mx-file span:nth-child(2){transform:rotate(6deg) translate(7px,5px);background:linear-gradient(135deg,#e8f7ff,#b8dcee)}
-#metis-export-study .mx-glyph.mx-file span:nth-child(3){width:21px;height:22px;left:32px;top:28px;border-radius:0;transform:rotate(6deg);border:0;background:repeating-linear-gradient(0deg,transparent 0 6px,#1f7aa8 6px 7px),repeating-linear-gradient(90deg,transparent 0 9px,#1f7aa8 9px 10px);box-shadow:none}
-#metis-export-study .mx-drop .mx-glyph{display:block;margin:0 auto 14px}
-#metis-export-study .mx-file-icon{background:none;border:0;width:50px;height:58px}
-#metis-export-study .mx-file-icon .mx-glyph{transform:scale(.78)}
-#metis-export-study .mx-journey{position:relative;isolation:isolate;border-radius:var(--mx-radius);background:#04223c;color:#e6eef7;overflow:hidden;box-shadow:0 18px 36px -28px #0623399e}
-#metis-export-study .mx-atmosphere{position:absolute;inset:0;z-index:-1;overflow:hidden;background:radial-gradient(ellipse at 50% 150%,#0f4a7a,transparent 75%),#04223c;pointer-events:none}
-#metis-export-study .mx-light{position:absolute;width:58%;height:100%;left:-15%;top:-40%;border-radius:50%;background:radial-gradient(ellipse,#0a8fd4a6,transparent 68%);will-change:transform}
-#metis-export-study .mx-light:nth-child(2){left:58%;top:30%;background:radial-gradient(ellipse,#4fc0f087,transparent 68%)}
-#metis-export-study .mx-atmosphere::after{content:'';position:absolute;inset:0;opacity:.5;background-image:radial-gradient(#8fd4f766 .7px,transparent .7px);background-size:23px 23px;mask-image:linear-gradient(0deg,transparent,#000)}
-#metis-export-study .mx-journey-top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:20px 24px 0;transition:padding .8s}
-#metis-export-study .mx-journey-top strong{font-size:14px;font-weight:500;display:flex;align-items:center;gap:9px}
-#metis-export-study .mx-live-dot{width:6px;height:6px;border-radius:50%;background:#4fc4f5;box-shadow:0 0 13px #7fdcffcc;flex:none}
-#metis-export-study .mx-journey-top small{font:11px ui-monospace,Consolas,monospace;letter-spacing:.15em;color:#a6c6dd}
-#metis-export-study .mx-chain{position:relative;display:flex;gap:12px;padding:25px 24px 22px;align-items:stretch;min-width:0}
-#metis-export-study .mx-chain::before{content:'';position:absolute;left:8%;right:8%;height:1px;top:50%;background:linear-gradient(90deg,#0a8fd4,#7fc4f740)}
-#metis-export-study .mx-stage{position:relative;flex:1 1 0;min-width:0;height:257px;border-radius:13px;background:#0a2a45ad;transition:flex-grow .9s cubic-bezier(.22,.8,.2,1),height .9s cubic-bezier(.22,.8,.2,1),background .7s;overflow:hidden}
-#metis-export-study .mx-stage[data-status=active]{flex-grow:4.6;background:linear-gradient(125deg,#0a8fd45c,#0a63962e);box-shadow:inset 0 1px #b9dcff4d,0 7px 28px #041e2e26}
-#metis-export-study .mx-stage[data-status=done]{flex-grow:.9;background:#0a2c44a6}
-#metis-export-study .mx-stage-head{position:relative;z-index:2;display:flex;align-items:center;gap:8px;padding:13px 12px;font-size:12px;white-space:nowrap}
-#metis-export-study .mx-stage-head em{font:11px ui-monospace,Consolas,monospace;color:#8fbede;font-style:normal}
-#metis-export-study .mx-stage-head b{font-weight:500}
-#metis-export-study .mx-stage-status{display:block;position:absolute;bottom:16px;left:0;right:0;text-align:center;font-size:11px;color:#9cbede}
-#metis-export-study .mx-stage[data-status=active] .mx-stage-status{color:#d6ecff}
-#metis-export-study .mx-stage .mx-glyph{position:absolute;left:50%;top:78px;margin-left:-38px;transition:top .9s,scale .9s;scale:.85}
-#metis-export-study .mx-stage[data-status=active] .mx-glyph{scale:1.12}
-#metis-export-study .mx-stage[data-status=pending] .mx-glyph{opacity:.45}
-#metis-export-study .mx-wait-copy{position:absolute;bottom:44px;left:0;right:0;text-align:center;font-size:12px;color:#c6e4fa}
-#metis-export-study .mx-stage:not([data-status=active]) .mx-wait-copy{display:none}
-#metis-export-study .mx-flow{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-#metis-export-study .mx-flow-track{fill:none;stroke:#7fc4f740;stroke-width:1}
-#metis-export-study .mx-flow-tail{fill:none;stroke:#9de4ff;stroke-width:2;stroke-linecap:round;filter:drop-shadow(0 0 4px #3cb8f0b8)}
-#metis-export-study .mx-seed{position:absolute;left:12px;font-size:11px;color:#d4e9fa;border-radius:6px;padding:4px 7px;background:#1444638f;top:68px;transition:opacity .4s}
-#metis-export-study .mx-seed:nth-of-type(2){top:111px;left:16px}
-#metis-export-study .mx-seed:nth-of-type(3){top:154px}
-#metis-export-study .mx-stage:not([data-status=active]) .mx-seed{opacity:0}
-#metis-export-study .mx-chain-note{padding:0 24px 20px;color:#c2dff0;font-size:12px;max-height:50px;opacity:1;transition:padding .8s,max-height .8s,opacity .4s}
-#metis-export-study .mx-journey[data-compact=true] .mx-stage{height:90px}
-#metis-export-study .mx-journey[data-compact=true] .mx-stage[data-status=active]{flex-grow:2}
-#metis-export-study .mx-journey[data-compact=true] .mx-stage-head{padding:9px 10px;font-size:12px;gap:6px}
-#metis-export-study .mx-journey[data-compact=true] .mx-stage .mx-glyph{top:10px;scale:.47}
-#metis-export-study .mx-journey[data-compact=true] .mx-stage[data-status=active] .mx-glyph{scale:.6}
-#metis-export-study .mx-journey[data-compact=true] .mx-stage-status{bottom:6px;font-size:11px}
-#metis-export-study .mx-journey[data-compact=true] .mx-wait-copy,#metis-export-study .mx-journey[data-compact=true] .mx-seed{display:none}
-#metis-export-study .mx-journey[data-compact=true] .mx-chain{padding:12px 16px 16px;gap:8px}
-#metis-export-study .mx-journey[data-compact=true] .mx-journey-top{padding:13px 18px 0}
-#metis-export-study .mx-journey[data-compact=true] .mx-chain-note{max-height:0;padding-top:0;padding-bottom:0;opacity:0}
-#metis-export-study .mx-work-area{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .9s cubic-bezier(.22,.8,.2,1),opacity .7s,margin .9s}
-#metis-export-study .mx-work-area[data-ready=true]{grid-template-rows:1fr;opacity:1;margin-top:22px}
-#metis-export-study .mx-work-inner{overflow:hidden;min-height:0}
-#metis-export-study .mx-report-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:15px 20px 0}
-#metis-export-study .mx-report-tabs button{border:0;background:transparent;border-radius:99px;padding:6px 10px;font-size:12px;color:var(--mx-muted);min-height:34px}
-#metis-export-study .mx-report-tabs button[aria-pressed=true]{background:var(--mx-soft);color:var(--mx-text)}
-#metis-export-study .mx-report-body{padding:28px}
-#metis-export-study .mx-eyebrow{font:11px ui-monospace,Consolas,monospace;color:var(--mx-muted);letter-spacing:.1em;margin-bottom:14px}
-#metis-export-study .mx-report-body h3{font:500 25px/1.6 Georgia,'Microsoft YaHei',serif;letter-spacing:-.03em;margin-bottom:18px;max-width:22em}
-#metis-export-study .mx-report-body p{font-size:15px;line-height:1.9;color:var(--mx-muted);margin:0 0 20px}
-#metis-export-study .mx-report-body strong{font-weight:500;color:var(--mx-text)}
-#metis-export-study .mx-report-divider{height:1px;background:var(--mx-line);margin:26px 0}
-#metis-export-study .mx-report-body h4{font-size:13px;letter-spacing:.04em;font-weight:500;margin:0 0 12px}
-#metis-export-study .mx-report-rows{display:grid;grid-template-columns:100px minmax(0,1fr);gap:13px 20px;font-size:14px;line-height:1.8}
-#metis-export-study .mx-report-rows dt{color:var(--mx-muted)}
-#metis-export-study .mx-report-rows dd{margin:0}
-#metis-export-study .mx-report-footer{font-size:12px;color:var(--mx-muted);border-top:1px solid var(--mx-line);padding:14px 24px;display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap}
-#metis-export-study .mx-export-status{font-size:12px;line-height:1.8;color:var(--mx-muted);padding:14px 0 0}
-#metis-export-study .mx-export-status strong{font-weight:500;color:var(--mx-text)}
-#metis-export-study .mx-toast{padding:12px 26px;background:var(--mx-soft);border-top:1px solid var(--mx-line);color:var(--mx-muted);font-size:12px;min-height:45px}
-@media(prefers-reduced-motion:reduce){#metis-export-study *,#metis-export-study *::before,#metis-export-study *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}#metis-export-study .mx-flow-tail{display:none}}
-@media(max-width:760px){#metis-export-study .mx-layout{grid-template-columns:1fr}#metis-export-study .mx-store{grid-template-columns:1fr;gap:14px}#metis-export-study .mx-store-actions{justify-content:flex-start}#metis-export-study .mx-store-steps{display:none}#metis-export-study .mx-nav{padding:9px 16px}#metis-export-study .mx-export{order:-1}#metis-export-study .mx-export fieldset{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}#metis-export-study .mx-export .mx-button{width:auto;margin-right:8px}#metis-export-study .mx-contents{display:none}#metis-export-study .mx-top{padding:16px}#metis-export-study .mx-page{padding:18px}#metis-export-study .mx-brand-sub{display:none}#metis-export-study .mx-stage[data-status=active]{flex-grow:3}#metis-export-study .mx-stage-head{flex-direction:column;gap:2px}#metis-export-study .mx-stage .mx-glyph{scale:.65}#metis-export-study .mx-stage[data-status=active] .mx-glyph{scale:.9}#metis-export-study .mx-seed{font-size:11px;padding:3px 4px;left:3px}#metis-export-study .mx-stage .mx-seed:nth-of-type(2){left:3px}#metis-export-study .mx-chain{padding-left:14px;padding-right:14px;gap:7px}#metis-export-study .mx-journey[data-compact=true] .mx-stage-head{flex-direction:row}#metis-export-study .mx-journey[data-compact=true] .mx-stage-head em{display:none}}
-@media(max-width:520px){#metis-export-study .mx-heading h1{font-size:22px}#metis-export-study .mx-heading{align-items:start;gap:9px}#metis-export-study .mx-brand{font-size:20px}#metis-export-study .mx-sample{font-size:11px}#metis-export-study .mx-page{padding:14px}#metis-export-study .mx-demo{padding:6px 14px;gap:12px}#metis-export-study .mx-fields{grid-template-columns:1fr}#metis-export-study .mx-input-panel{padding:18px}#metis-export-study .mx-table td,#metis-export-study .mx-table th{padding:10px 9px}#metis-export-study .mx-sku{font-size:11px}#metis-export-study .mx-journey-top small{display:none}#metis-export-study .mx-chain{flex-direction:column;padding-top:14px}#metis-export-study .mx-chain::before{top:20px;bottom:20px;left:37px;width:1px;height:auto;right:auto}#metis-export-study .mx-stage{flex:auto;height:48px}#metis-export-study .mx-stage[data-status=active]{flex:auto;height:192px}#metis-export-study .mx-stage .mx-glyph{top:-14px;left:30px;scale:.42}#metis-export-study .mx-stage[data-status=active] .mx-glyph{top:52px;left:60%;scale:1}#metis-export-study .mx-stage-head{flex-direction:row;margin-left:52px;padding:13px 10px;gap:8px}#metis-export-study .mx-stage[data-status=active] .mx-stage-head{margin-left:0}#metis-export-study .mx-stage-status{left:auto;right:12px;bottom:16px}#metis-export-study .mx-stage[data-status=active] .mx-stage-status{left:0;right:0;bottom:14px}#metis-export-study .mx-wait-copy{bottom:34px;font-size:11px}#metis-export-study .mx-seed{left:18px;top:65px}#metis-export-study .mx-stage .mx-seed:nth-of-type(2){left:18px;top:96px}#metis-export-study .mx-seed:nth-of-type(3){top:127px}#metis-export-study .mx-journey[data-compact=true] .mx-chain{flex-direction:row;gap:4px;padding:10px 9px 12px}#metis-export-study .mx-journey[data-compact=true] .mx-chain::before{left:8%;right:8%;top:50%;height:1px;width:auto}#metis-export-study .mx-journey[data-compact=true] .mx-stage{flex:1 1 0;height:94px}#metis-export-study .mx-journey[data-compact=true] .mx-stage[data-status=active]{flex-grow:1.5}#metis-export-study .mx-journey[data-compact=true] .mx-stage-head{margin-left:0;padding:7px 2px;justify-content:center;font-size:11px}#metis-export-study .mx-journey[data-compact=true] .mx-stage .mx-glyph{left:50%;top:24px;scale:.4}#metis-export-study .mx-journey[data-compact=true] .mx-stage[data-status=active] .mx-glyph{scale:.5}#metis-export-study .mx-journey[data-compact=true] .mx-stage-status{left:0;right:0;bottom:7px}#metis-export-study .mx-report-body{padding:22px}#metis-export-study .mx-report-body h3{font-size:22px}#metis-export-study .mx-report-rows{grid-template-columns:1fr;gap:5px}#metis-export-study .mx-report-rows dd{margin-bottom:12px}#metis-export-study .mx-ready{font-size:11px}}
-@media(pointer:coarse){#metis-export-study button{min-height:44px}#metis-export-study input,#metis-export-study select,#metis-export-study textarea{font-size:16px}}
+#metis-export-study h1{font-size:18px;font-weight:600;letter-spacing:.02em}
+#metis-export-study h2{font-size:16px;font-weight:600}
+#metis-export-study h3{font-size:14px;font-weight:600}
+#metis-export-study button,#metis-export-study input,#metis-export-study select,#metis-export-study textarea{font:inherit;color:inherit}
+#metis-export-study button{background:var(--mx-panel);border:1px solid var(--mx-line);border-radius:7px;padding:7px 13px}
+#metis-export-study button:hover:enabled{background:var(--mx-soft);border-color:var(--mx-blue)}
+#metis-export-study button:disabled{opacity:.48;cursor:not-allowed}
+#metis-export-study .mx-primary{background:linear-gradient(115deg,var(--mx-button),var(--mx-button-light));border-color:transparent;border-radius:22px;color:var(--mx-on-button);font-weight:600;box-shadow:0 3px 12px color-mix(in srgb,var(--mx-button) 14%,transparent)}
+#metis-export-study .mx-primary:hover:enabled{background:var(--mx-button);filter:brightness(1.08)}
+#metis-export-study .mx-link{border:0;background:transparent;color:var(--mx-blue);padding:4px}
+#metis-export-study input:not([type=checkbox]):not([type=file]),#metis-export-study select,#metis-export-study textarea{width:100%;min-width:0;border:1px solid var(--mx-line);border-radius:6px;background:var(--mx-panel);padding:8px 10px}
+#metis-export-study input[type=checkbox]{accent-color:var(--mx-blue);width:16px;height:16px;vertical-align:middle}
+#metis-export-study label{display:block}
+#metis-export-study small,#metis-export-study .mx-muted{color:var(--mx-muted);font-size:12px}
+#metis-export-study .mx-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#metis-export-study .mx-between{justify-content:space-between}
+#metis-export-study .mx-header{margin-bottom:18px}
+#metis-export-study .mx-brand{display:flex;align-items:baseline;gap:14px}
+#metis-export-study .mx-brand b{font-size:12px;letter-spacing:.2em;color:var(--mx-blue)}
+#metis-export-study .mx-home-head{margin:8px 0 var(--mx-gap)}
+#metis-export-study .mx-home-head p{margin-top:4px;color:var(--mx-muted);font-size:13px}
+#metis-export-study .mx-work-nav{margin-bottom:var(--mx-gap)}
+#metis-export-study .mx-panel{background:var(--mx-panel);border:1px solid var(--mx-line);border-radius:10px;padding:18px;min-width:0}
+#metis-export-study .mx-form-grid{display:grid;grid-template-columns:1fr 1.35fr;gap:10px;margin:12px 0}
+#metis-export-study .mx-form-grid label{font-size:12px}
+#metis-export-study .mx-form-grid input,#metis-export-study .mx-form-grid select{margin-top:5px}
+#metis-export-study .mx-upload{padding:12px;border:1px dashed var(--mx-line);border-radius:7px;background:var(--mx-bg)}
+#metis-export-study .mx-upload[data-over=true]{border-color:var(--mx-blue);background:var(--mx-soft)}
+#metis-export-study .mx-upload input[type=file]{max-width:100%;font-size:12px;display:block;margin-top:7px}
+#metis-export-study .mx-files{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+#metis-export-study .mx-files button{font-size:12px;padding:3px 7px;max-width:100%;overflow-wrap:anywhere}
+#metis-export-study .mx-submit{margin-top:12px}
+#metis-export-study .mx-inline{margin-top:12px}
+#metis-export-study summary{padding:10px 0;color:var(--mx-blue)}
+#metis-export-study details>div{padding:3px 0 12px}
+#metis-export-study .mx-history{display:grid;margin-top:10px}
+#metis-export-study .mx-history button{display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,.4fr) auto;align-items:center;text-align:left;padding:16px 10px;border:0;border-radius:6px;background:transparent;gap:16px}
+#metis-export-study .mx-history button+button{margin-top:4px}
+#metis-export-study .mx-history button+button{border-top:1px solid var(--mx-line)}
+#metis-export-study .mx-history .mx-history-action{color:var(--mx-blue);font-size:13px}
+#metis-export-study .mx-history strong{display:block;font-weight:500;overflow-wrap:anywhere}
+#metis-export-study .mx-history .mx-status{font-size:12px;align-self:center}
+#metis-export-study .mx-current{scroll-margin-top:18px}
+#metis-export-study .mx-current-head{align-items:flex-start}
+#metis-export-study .mx-export{text-align:right}
+#metis-export-study .mx-export small{display:block;margin-top:4px}
+#metis-export-study .mx-progress{margin-top:16px;padding:13px 14px;background:var(--mx-bg);border-radius:7px}
+#metis-export-study .mx-steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;list-style:none;margin:0;padding:0}
+#metis-export-study .mx-steps li{display:flex;gap:7px;align-items:center;color:var(--mx-muted);font-size:13px;position:relative}
+#metis-export-study .mx-steps i{display:grid;place-items:center;flex:0 0 22px;height:22px;font-size:11px;border-radius:50%;background:var(--mx-line);font-style:normal}
+#metis-export-study .mx-steps li[data-state=complete]{color:var(--mx-blue)}
+#metis-export-study .mx-steps li[data-state=complete] i{background:var(--mx-soft)}
+#metis-export-study .mx-steps li[aria-current=step]{font-weight:600;color:var(--mx-blue)}
+#metis-export-study .mx-steps li[aria-current=step] i{background:var(--mx-blue);color:var(--mx-panel)}
+#metis-export-study .mx-steps[data-running=true] li[aria-current=step] i{animation:mx-node-breathe 1.8s ease-in-out infinite}
+#metis-export-study .mx-progress-note{margin-top:9px;font-size:12px;color:var(--mx-muted);min-height:19px}
+#metis-export-study .mx-result{margin-top:17px}
+#metis-export-study .mx-result-head{margin-bottom:7px}
+#metis-export-study .mx-result>p{max-width:76ch}
+#metis-export-study .mx-divider{border-top:1px solid var(--mx-line);margin-top:14px;padding-top:4px}
+#metis-export-study .mx-report{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 24px}
+#metis-export-study .mx-report article{padding-top:10px;border-top:1px solid var(--mx-line)}
+#metis-export-study .mx-report article p{margin-top:6px}
+#metis-export-study .mx-scene{border-top:1px solid var(--mx-line)}
+#metis-export-study .mx-scene summary{color:var(--mx-ink)}
+#metis-export-study .mx-role{margin-top:12px}
+#metis-export-study .mx-role label{font-weight:500}
+#metis-export-study .mx-products{list-style:none;margin:5px 0 0;padding:0}
+#metis-export-study .mx-products li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--mx-line)}
+#metis-export-study .mx-products label{font-weight:400}
+#metis-export-study .mx-products code{font-size:12px;color:var(--mx-muted)}
+#metis-export-study .mx-products .mx-stock{white-space:nowrap;font-variant-numeric:tabular-nums;font-size:12px}
+#metis-export-study .mx-scope{display:flex;flex-wrap:wrap;gap:8px;margin:7px 0 10px}
+#metis-export-study .mx-scope button[aria-pressed=true]{border-color:var(--mx-blue);background:var(--mx-soft);color:var(--mx-blue)}
+#metis-export-study .mx-error{color:var(--mx-error);font-size:12px;margin-top:6px}
+#metis-export-study .mx-notice{margin-top:10px;color:var(--mx-blue);font-size:12px}
+#metis-export-study .mx-footer{margin-top:12px}
+#metis-export-study .mx-log{margin:0;padding-left:22px;display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;font-size:12px}
+@keyframes mx-node-breathe{50%{box-shadow:0 0 0 5px color-mix(in srgb,var(--mx-blue) 12%,transparent)}}
+@media(prefers-reduced-motion:reduce){#metis-export-study .mx-steps[data-running=true] li[aria-current=step] i{animation:none}}
+@media(max-width:700px){#metis-export-study{padding:14px}#metis-export-study .mx-steps{gap:6px}#metis-export-study .mx-steps li{flex-direction:column;align-items:flex-start;font-size:11px}#metis-export-study .mx-report{grid-template-columns:1fr}#metis-export-study .mx-panel{padding:14px}#metis-export-study .mx-export{text-align:left}#metis-export-study .mx-form-grid{grid-template-columns:1fr}#metis-export-study .mx-brand{gap:8px}#metis-export-study .mx-history button{grid-template-columns:minmax(0,1fr) auto;gap:4px 10px}#metis-export-study .mx-history .mx-status{grid-column:1}#metis-export-study .mx-history .mx-history-action{grid-column:2;grid-row:1 / 3}}
+@media(pointer:coarse){#metis-export-study button,#metis-export-study summary{min-height:44px}#metis-export-study input:not([type=checkbox]),#metis-export-study select,#metis-export-study textarea{font-size:16px}}
 </style>
-
-<div id="metis-export-study" aria-label="METIS 导出优先界面方案" data-motion="playing">
-  <header class="mx-top"><div class="mx-brand"><span class="mx-monogram" aria-hidden="true"></span>METIS</div><span class="mx-brand-sub">从一家店，到一份选品清单</span><span class="mx-sample">设计演示 · 示例数据</span></header>
-  <nav class="mx-nav" aria-label="界面导航"><button type="button" data-view="workbench" aria-pressed="true">工作台</button><button type="button" data-view="stores" aria-pressed="false">店铺</button><button type="button" data-view="input" aria-pressed="false">新建店铺</button></nav>
-  <div class="mx-demo" aria-label="原型演示控制"><span id="mx-demo-note">自动演示 · 等待时间已压缩</span><button type="button" data-action="pause">暂停演示</button><button type="button" data-action="next">下一阶段</button><button type="button" data-action="replay">重新演示</button></div>
-
-  <section class="mx-page" data-page="stores" hidden>
-    <div class="mx-heading"><div><h1>我的店铺</h1><p>每家店的分析、场景与选品文件都留在这里，随时打开继续。</p></div><button class="mx-button mx-primary" type="button" data-view="input">新建店铺</button></div>
-    <div class="mx-store-list" id="mx-store-list"></div>
-  </section>
-
-  <section class="mx-page" data-page="input" hidden>
-    <div class="mx-heading"><div><h1>从这家店，开始选品。</h1><p>提供截图或商品名，生成一份可以带走的选品文件。</p></div></div>
-    <div class="mx-panel mx-input-panel">
-      <div class="mx-fields"><label>销售国家<select id="mx-country"><option value="">请选择国家</option><option>泰国</option><option>菲律宾</option><option>越南</option><option>马来西亚</option></select></label><label>店铺名称 · 选填<input id="mx-store-name" placeholder="不填则自动命名" maxlength="120"></label></div>
-      <div class="mx-drop"><span class="mx-glyph mx-report" aria-hidden="true"><span></span><span></span><span></span></span><button class="mx-button" type="button" data-action="sample">使用示例店铺资料</button><p>正式页面支持选图、拖入或粘贴截图</p></div>
-      <label class="mx-label" for="mx-products">也可以直接填写商品名</label><textarea id="mx-products" placeholder="例如：便携烤炉、露营餐具、折叠桌"></textarea>
-      <p class="mx-input-hint">默认生成经营分析、使用场景和商品清单。高级参数收起，不阻挡提交。</p>
-      <div class="mx-input-actions"><small>Excel · 主 / 子 SKU · 场景 · 经营分析</small><button class="mx-button mx-primary" type="button" data-action="start">开始生成 →</button></div>
+<div id="metis-export-study" aria-label="METIS 店铺首页与工作页">
+  <header class="mx-header mx-row mx-between">
+    <div class="mx-brand"><b>METIS</b><h1>店铺选品</h1></div>
+    <small>交互原型 · 固定示例数据 · 不发送上传内容</small>
+  </header>
+  <section id="mx-home" data-page="home" aria-labelledby="mx-home-title">
+    <div class="mx-home-head mx-row mx-between">
+      <div><h2 id="mx-home-title">我的店铺</h2><p>新建一次选品，或接着查看已有结果。</p></div>
+      <button id="mx-new-store" class="mx-primary cursor-interaction" type="button">新建店铺</button>
     </div>
+    <section class="mx-panel" aria-labelledby="mx-history-title">
+      <div class="mx-row mx-between"><h3 id="mx-history-title">历史店铺</h3><small id="mx-history-count"></small></div>
+      <div id="mx-history" class="mx-history"></div>
+      <button id="mx-more" type="button" class="mx-link cursor-interaction" hidden>展开全部</button>
+    </section>
   </section>
-
-  <section class="mx-page" data-page="workbench" hidden>
-    <div class="mx-heading"><div><h1>户外生活店</h1><p>泰国市场 · 便携烹饪 / 户外用餐</p></div><span class="mx-ready" id="mx-task-status" role="status"><i></i>正在分析店铺</span></div>
-    <div class="mx-journey" id="mx-journey" data-compact="false" aria-label="资料到选品文件的连续流程">
-      <div class="mx-atmosphere" aria-hidden="true"><div class="mx-light"></div><div class="mx-light"></div></div>
-      <div class="mx-journey-top"><strong><span class="mx-live-dot" aria-hidden="true"></span><span id="mx-motion-action">正在把店铺资料，汇成经营判断</span></strong><small>METIS / IN THE MAKING</small></div>
-      <div class="mx-chain" id="mx-chain" role="list" aria-label="生成流程"></div>
-      <p class="mx-chain-note">分析一出来，就可以先阅读。商品匹配会在后台继续。</p>
-    </div>
-    <div class="mx-work-area" id="mx-work-area" data-ready="false" inert aria-hidden="true"><div class="mx-work-inner"><div class="mx-layout">
-      <div class="mx-panel">
-        <div class="mx-panel-top"><h2 id="mx-preview-title">店铺分析</h2><span class="mx-sku" id="mx-preview-scope">已生成 · 可先阅读</span></div>
-        <div class="mx-switches" aria-label="查看工作台内容"><button type="button" data-content="analysis" aria-pressed="true">店铺分析</button><button type="button" data-content="preview" aria-pressed="false" disabled>商品清单 · 生成中</button></div>
-        <div data-content-panel="analysis">
-          <nav class="mx-report-tabs" aria-label="店铺分析章节"><button type="button" data-report="0" aria-pressed="true">经营判断</button><button type="button" data-report="1" aria-pressed="false">店铺画像</button><button type="button" data-report="2" aria-pressed="false">现有产品</button><button type="button" data-report="3" aria-pressed="false">拓展方向</button><button type="button" data-report="4" aria-pressed="false">目标人群</button><button type="button" data-report="5" aria-pressed="false">运营建议</button></nav>
-          <article class="mx-report-body" data-report-panel="0"><div class="mx-eyebrow">01 / STORE DIRECTION</div><h3>从一顿户外饭出发，<br>把单品做成一套生活方式。</h3><p>已有的烤炉、餐具与折叠桌，串起了“烹饪 — 用餐 — 收纳”的需求。店铺可以围绕<strong>轻便、成套、容易出发</strong>建立清晰的商品方向。</p><div class="mx-report-divider"></div><h4>接下来，优先补齐什么</h4><dl class="mx-report-rows"><dt>把主力做深</dt><dd>围绕烤炉补齐烤夹、餐具与隔热用品，让同一次购买解决一顿饭。</dd><dt>把场景连起来</dt><dd>从庭院烧烤延伸到周末露营与公园野餐，共用桌面、收纳和用餐商品。</dd><dt>保持店铺聚焦</dt><dd>先补齐同一用途里的缺口，再考虑跨度更大的户外装备。</dd></dl></article>
-          <article class="mx-report-body" data-report-panel="1" hidden><div class="mx-eyebrow">02 / STORE PROFILE</div><h3>一家围绕便携烹饪<br>与户外用餐的店。</h3><p>示例资料中的商品集中在短途、日常可用的户外生活。店铺定位可以落在<strong>轻量户外用餐</strong>，让用户能快速理解来这里可以买齐什么。</p><dl class="mx-report-rows"><dt>已有线索</dt><dd>便携烤炉、露营餐具、折叠桌。</dd><dt>核心价值</dt><dd>容易携带、使用门槛低、成套解决用餐需求。</dd><dt>信息边界</dt><dd>当前未提供真实销量与价格资料；不据此断言价格带、热销表现或人群占比。</dd></dl></article>
-          <article class="mx-report-body" data-report-panel="2" hidden><div class="mx-eyebrow">03 / CURRENT ASSORTMENT</div><h3>主线已经有了，<br>组合还可以更完整。</h3><p>先按商品承担的用途理解现有结构，再寻找缺口。以下是示例资料的整理。</p><dl class="mx-report-rows"><dt>烹饪核心</dt><dd>便携烤炉：负责完成户外烹饪，是组合的起点。</dd><dt>用餐配套</dt><dd>露营餐具：承接烹饪之后的分装与进食需求。</dd><dt>场景支撑</dt><dd>折叠桌：让准备、摆放与用餐有稳定的空间。</dd><dt>待补角色</dt><dd>夹取、隔热、保温、清洁与随行收纳。</dd></dl></article>
-          <article class="mx-report-body" data-report-panel="3" hidden><div class="mx-eyebrow">04 / NEXT OPPORTUNITIES</div><h3>沿着用途扩展，<br>让每一个新品都有来处。</h3><p>先从现有商品自然延伸。具体可采购货号与库存仍由后续匹配确认。</p><dl class="mx-report-rows"><dt>庭院烧烤</dt><dd>补充烤夹、耐热手套与烹饪配件，让已有烤炉形成组合。</dd><dt>周末露营</dt><dd>补充餐具收纳、便携保温与清洁用品，覆盖出发到收好的过程。</dd><dt>公园野餐</dt><dd>尝试防潮垫、保温袋等邻近用途，延伸到更轻量的户外用餐。</dd></dl></article>
-          <article class="mx-report-body" data-report-panel="4" hidden><div class="mx-eyebrow">05 / PEOPLE & NEEDS</div><h3>按“要完成什么”，<br>理解潜在顾客。</h3><p>这里的人群是根据商品用途提出的需求假设，需要真实经营数据验证。</p><dl class="mx-report-rows"><dt>家庭聚餐</dt><dd>在庭院或近郊准备一顿饭，关注实用、成套与收拾方便。</dd><dt>周末轻露营</dt><dd>短途出发，关注便携、收纳体积与装备之间的搭配。</dd><dt>朋友野餐</dt><dd>快速布置用餐空间，关注携带、摆放与食物保温。</dd></dl></article>
-          <article class="mx-report-body" data-report-panel="5" hidden><div class="mx-eyebrow">06 / OPERATING IDEAS</div><h3>让顾客看到<br>这套商品怎么一起用。</h3><p>内容围绕真实使用过程组织，选品围绕场景缺口组织。</p><dl class="mx-report-rows"><dt>展示方式</dt><dd>用“准备 → 烹饪 → 用餐 → 收纳”的顺序展示商品，说明每件商品的用途。</dd><dt>组合建议</dt><dd>主商品搭配必要配件；组合是否上架，仍需核对库存、规格与价格。</dd><dt>验证方式</dt><dd>先测试少量关联商品，观察组合加购与成交，再决定拓展范围。</dd></dl></article>
-          <div class="mx-report-footer"><span>完整店铺分析也会写入 Excel</span><span id="mx-reading-status">场景正在生成，可以继续阅读</span></div>
-        </div>
-        <div data-content-panel="preview" hidden>
-          <div class="mx-band-scene">
-            <div class="mx-band-head"><h3>使用场景</h3><span>先选一个场景，下面只列它召回的货号。</span></div>
-            <div class="mx-scene-nav" id="mx-scene-nav" aria-label="预览场景"></div>
-          </div>
-          <div class="mx-band-recall">
-            <div class="mx-band-head"><h3>召回商品</h3><span class="mx-preview-note" id="mx-preview-note"></span></div>
-            <div class="mx-legend"><span class="mx-chip mx-chip-ok">相关</span><span class="mx-chip mx-chip-no">不相关</span><span class="mx-chip mx-chip-unknown">未复核</span><span>复核只做标记，不剔除候选</span></div>
-            <table class="mx-table"><thead><tr><th scope="col">主 SKU</th><th scope="col">商品 / 角色 / 复核</th><th scope="col">泰国库存</th></tr></thead><tbody id="mx-table-rows"></tbody></table>
-          </div>
-          <div class="mx-preview-footer">Excel 按场景分组；同场景不重复，货号独立成格。</div>
-        </div>
-        <div data-content-panel="custom" hidden>
-          <div class="mx-band-scene"><div class="mx-band-head"><h3>按场景选入</h3><span class="mx-preview-note">可整组选入，也可展开到商品角色和货号。</span></div></div>
-          <div class="mx-custom" id="mx-custom-list"></div>
-        </div>
+  <section id="mx-work" data-page="work" aria-label="店铺工作页" hidden>
+    <div class="mx-work-nav mx-row mx-between"><button id="mx-back" class="mx-link cursor-interaction" type="button">← 返回首页</button><small id="mx-work-label">新建店铺</small></div>
+    <form id="mx-import" class="mx-panel">
+      <div class="mx-row mx-between"><h2>新建店铺</h2><button class="mx-link cursor-interaction" id="mx-example" type="button">填入示例</button></div>
+      <div class="mx-form-grid">
+        <label>目标国家 <span aria-hidden="true">*</span><select id="mx-country" required aria-label="目标国家"><option value="">请选择</option><option>菲律宾</option><option>马来西亚</option><option>泰国</option><option>越南</option><option>新加坡</option><option>印度尼西亚</option></select></label>
+        <label>店铺名称 <span class="mx-muted">选填</span><input id="mx-name" maxlength="80" placeholder="留空则自动命名"></label>
       </div>
-      <aside class="mx-panel mx-export" aria-label="导出文件">
-        <div class="mx-file"><span class="mx-file-icon"><span class="mx-glyph mx-file" aria-hidden="true"><span></span><span></span><span></span></span></span><div><strong>户外生活店 · 选品报告</strong><small>EXCEL WORKBOOK / .xlsx</small></div></div>
-        <p class="mx-export-status" id="mx-export-status">店铺分析已生成。<br>正在补齐场景与商品。</p>
-        <fieldset id="mx-export-scope" disabled><legend>导出范围</legend><label class="mx-radio"><input type="radio" name="mx-scope" value="all" checked>全部候选</label><label class="mx-radio"><input type="radio" name="mx-scope" value="stock">仅泰国有货</label><label class="mx-radio"><input type="radio" name="mx-scope" value="custom">自选商品</label></fieldset>
-        <p class="mx-count" id="mx-count" aria-live="polite"></p>
-        <button class="mx-button mx-primary" type="button" data-action="export" disabled>商品准备中</button><button class="mx-button" type="button" data-action="adjust" disabled>调整商品</button>
-        <div class="mx-contents"><strong>一个文件，包含</strong><br>场景主 SKU · 子 SKU · 去重清单<br>店铺概况 · 候选明细 · 导出说明</div>
-      </aside>
-    </div></div></div>
+      <div id="mx-upload" class="mx-upload">
+        <label for="mx-files">店铺截图 <small>拖入或粘贴，最多 20 张</small></label>
+        <input type="file" accept="image/*" multiple id="mx-files">
+        <div id="mx-file-list" class="mx-files"></div>
+      </div>
+      <details id="mx-products-input"><summary class="cursor-interaction">也可以直接填写商品名</summary><div><label for="mx-products-text" class="mx-muted">每行一个商品；有截图时可不填</label><textarea id="mx-products-text" rows="3" placeholder="便携烤炉&#10;折叠桌"></textarea></div></details>
+      <div class="mx-row mx-between mx-submit"><small>Excel：主/子 SKU、店铺分析、去重清单</small><button class="mx-primary cursor-interaction" type="submit">开始生成</button></div>
+      <p id="mx-input-error" role="alert" class="mx-error" hidden></p>
+    </form>
+  <section id="mx-current" class="mx-panel mx-current" aria-labelledby="mx-current-title" hidden>
+    <div class="mx-row mx-between mx-current-head">
+      <div><small>当前店铺</small><h2 id="mx-current-title"></h2><p id="mx-current-meta" class="mx-muted"></p></div>
+      <div class="mx-export"><button id="mx-export" type="button" class="mx-primary cursor-interaction">模拟导出 Excel</button><small id="mx-export-hint"></small></div>
+    </div>
+    <div class="mx-progress">
+      <ol id="mx-steps" class="mx-steps" aria-label="生成进度">
+        <li><i aria-hidden="true">1</i><span>店铺分析</span></li><li><i aria-hidden="true">2</i><span>使用场景</span></li><li><i aria-hidden="true">3</i><span>场景商品</span></li><li><i aria-hidden="true">4</i><span>匹配货号</span></li><li><i aria-hidden="true">5</i><span>可以导出</span></li>
+      </ol>
+      <div class="mx-row mx-between mx-progress-note"><span id="mx-status" role="status"></span><button type="button" id="mx-job-action" class="mx-link cursor-interaction" hidden></button></div>
+    </div>
+    <p id="mx-job-error" class="mx-error" role="alert" hidden></p>
+    <div id="mx-analysis" class="mx-result" hidden>
+      <div class="mx-row mx-between mx-result-head"><h3>店铺分析</h3><small>分析已生成，可以先看</small></div>
+      <p id="mx-conclusion"></p>
+      <details data-open="report"><summary class="cursor-interaction">完整店铺分析</summary><div id="mx-report" class="mx-report"></div></details>
+    </div>
+    <div id="mx-waiting" class="mx-result mx-muted">正在读取资料。店铺分析生成后会显示在这里，后续流程自动继续。</div>
+    <details id="mx-scenes-detail" class="mx-divider" data-open="scenes" hidden>
+      <summary id="mx-scenes-title" class="cursor-interaction">使用场景与商品</summary>
+      <div id="mx-scenes"></div>
+    </details>
+    <details id="mx-export-options" class="mx-divider" data-open="export" hidden>
+      <summary id="mx-scope-title" class="cursor-interaction">调整导出范围</summary>
+      <div>
+        <div class="mx-scope" role="group" aria-label="导出范围">
+          <button type="button" class="cursor-interaction" data-scope="all">全部候选</button><button type="button" class="cursor-interaction" data-scope="stock">仅目标国家有货</button><button type="button" class="cursor-interaction" data-scope="custom">自选商品</button>
+        </div>
+        <p id="mx-scope-count" class="mx-muted" role="status"></p>
+        <div id="mx-custom-actions" class="mx-row mx-inline" hidden><button id="mx-select-all" type="button" class="cursor-interaction" data-bulk="all">全选</button><button type="button" class="cursor-interaction" data-bulk="inverse">反选</button><small>在上方展开场景，按要用的商品或单个货号选择。</small></div>
+        <label class="mx-inline"><input type="checkbox" id="mx-dedupe" checked> 附带跨场景去重清单</label>
+        <p class="mx-muted mx-inline">全部候选可能包含不相关或未复核项。库存未知不视为有货。</p>
+      </div>
+    </details>
+    <div class="mx-footer mx-divider">
+      <details data-open="materials"><summary class="cursor-interaction">导入资料与设置</summary><div><p id="mx-materials"></p><p class="mx-muted mx-inline">正式页面在此保留补图、排除商品与参数调整；修改后显示需要更新的阶段。</p></div></details>
+      <details data-open="log"><summary class="cursor-interaction">处理详情</summary><div><ol id="mx-log" class="mx-log"></ol></div></details>
+    </div>
+    <p id="mx-notice" class="mx-notice" role="status" hidden></p>
   </section>
-  <div class="mx-toast" id="mx-toast" role="status" aria-live="polite">演示从等待开始：约 8 秒后分析自动展开，顶部落下进度链，数据汇入动效在画布上进行。切到“店铺”可以看到同一家店的状态。原型仅使用示例数据。</div>
+  </section>
 </div>
-
 <script>
 (() => {
-  // MODEL START: pure selection rules, checked by check_ui_proposal.cjs.
-  const mxItems = [
-    {scene:0,sku:'DEMO-101',name:'便携烧烤炉',role:'户外烹饪',stock:128,review:'相关'},
-    {scene:0,sku:'DEMO-102',name:'不锈钢烤夹',role:'烹饪工具',stock:64,review:'相关'},
-    {scene:0,sku:'DEMO-103',name:'折叠餐桌',role:'用餐支撑',stock:0,review:'相关'},
-    {scene:1,sku:'DEMO-201',name:'露营餐具套装',role:'便携用餐',stock:36,review:'相关'},
-    {scene:1,sku:'DEMO-202',name:'灯具收纳包',role:'随行收纳',stock:null,review:'未复核'},
-    {scene:1,sku:'DEMO-103',name:'折叠餐桌',role:'用餐支撑',stock:0,review:'相关'},
-    {scene:2,sku:'DEMO-301',name:'防潮野餐垫',role:'户外就坐',stock:91,review:'相关'},
-    {scene:2,sku:'DEMO-302',name:'便携保温袋',role:'食物保温',stock:18,review:'相关'},
-    {scene:2,sku:'DEMO-303',name:'家用装饰托盘',role:'食物摆放',stock:52,review:'不相关'}
-  ];
-  const mxScenes = ['庭院烧烤','周末露营','公园野餐'];
-  function mxChoose(scope, picked) {
-    return mxItems.filter((item,index) => scope === 'all' || (scope === 'stock' ? item.stock != null && item.stock > 0 : picked.includes(index)));
-  }
-  function mxCounts(rows) {
-    return { scenes:new Set(rows.map(r=>r.scene)).size, perScene:new Set(rows.map(r=>r.scene+'|'+r.sku)).size, unique:new Set(rows.map(r=>r.sku)).size };
-  }
-  // Compressed demonstration time only. Production must use backend stage/asset readiness.
-  const mxBoundaries=[8,15,22,40];
+  // MODEL START
+  const mxStageNames=['读取截图','整理商品线索','生成店铺分析','生成使用场景','生成场景商品','扩展检索词','查找商品与库存','复核相关性'];
+  const mxEnds=[3,5,7,10,13,15,20,24];
+  const mxCatalog={
+    outdoor:{
+      conclusion:'以便携烹饪为主线，优先补齐备餐、用餐和收纳用品，让用户一次买齐周末出行所需。',
+      reports:[
+        ['经营判断','先围绕现有烤炉和厨具做搭配，再扩展轻量户外用品，避免直接进入大型装备。','依据：示例资料中烹饪与便携用品集中出现。'],
+        ['店铺画像','偏实用型的轻户外店铺，兼顾家庭出游与朋友聚餐。','边界：没有订单、销售额或转化数据，不据此判断真实畅销程度。'],
+        ['现有产品结构','便携烤炉适合作为组合的中心，烧烤夹和折叠桌承担操作与摆放功能。沿着实际使用过程延伸，比直接拓展大型装备更容易解释商品之间的关系。','依据：便携烤炉、烧烤夹、折叠桌三条示例商品线索。'],
+        ['未来产品结构','烹饪配件：从便携烤炉延伸到食材处理与操作工具。可以考虑夹取工具、食材托盘和清洁用品。这些用品对应烤炉使用前后连续发生的动作。\n用餐支撑：从折叠桌延伸到餐具与食物摆放。可以考虑便携餐具和轻量收纳盒。与现有桌面搭配时，需要核对尺寸和携带方式。\n出行收纳：从整套烹饪用品的携带需要延伸。可以考虑保温袋、工具袋和防潮垫。先围绕短途用途选择，避免扩展成与现有商品脱节的专业装备。','优先顺序：烹饪配件 → 用餐支撑 → 出行收纳。'],
+        ['目标人群','周末短途出游的家庭、朋友聚餐人群，以及轻量露营新手。','判断来自商品用途；未使用真实客群画像。'],
+        ['运营建议','按准备、烹饪、用餐、收纳组织场景；在展示搭配时写清每类商品的作用。','先核验商品适用性与目标国库存，再形成选品清单。']
+      ],
+      scenes:[
+        ['周末烧烤','为家庭和朋友准备易携带的户外烹饪组合。','现有烤炉与厨具可组成核心，补齐操作工具和桌面。'],
+        ['轻量露营','减少携带负担，满足短途露营的用餐与收纳。','便携型商品更适合作为已有烹饪产品的延伸。'],
+        ['公园野餐','覆盖坐垫、食物携带与现场摆放。','围绕短途休闲补充用品，部分室内产品仍需排除。']
+      ],
+      items:[
+        [0,'户外烹饪','DEMO-101','便携烤炉',128,'相关'],[0,'烹饪工具','DEMO-102','烧烤夹',64,'相关'],[0,'用餐支撑','DEMO-103','折叠桌',0,'相关'],
+        [1,'便携用餐','DEMO-201','轻量餐具',36,'相关'],[1,'随行收纳','DEMO-202','灯具收纳包',null,'未复核'],[1,'用餐支撑','DEMO-103','折叠桌',0,'相关'],
+        [2,'户外就坐','DEMO-301','防潮野餐垫',91,'相关'],[2,'食物保温','DEMO-302','保温袋',18,'相关'],[2,'食物摆放','DEMO-303','家用托盘',52,'不相关']
+      ]
+    },
+    desk:{
+      conclusion:'以桌面收纳为核心，优先完善文具分类和线材整理，再延伸到小空间居家办公。',
+      reports:[
+        ['经营判断','以整洁桌面的连带需求组织选品，提高搭配的完整度。','依据：示例资料包含笔筒、抽屉分隔和线材整理用品。'],
+        ['店铺画像','服务居家办公与学习桌面的小型收纳店。','没有真实销售数据，不将示例判断作为经营事实。'],
+        ['现有产品结构','小件整理工具较完整，大件家具不在当前主营范围。','依据：三类小型收纳商品。'],
+        ['未来产品结构','优先补齐线材固定，其次拓展文件分类与桌边利用。','优先顺序：桌面小件 → 线材整理 → 文件收纳。'],
+        ['目标人群','在家办公者、学生以及小空间住户。','依据是用途推断，需结合真实买家数据验证。'],
+        ['运营建议','按工作区、学习区组织组合，突出尺寸与安装方式。','先确认商品尺寸与材质，避免不适配带来的退换。']
+      ],
+      scenes:[['居家办公','整理文具与线材，留出可用工作区域。','收纳用品之间存在连带需求。'],['学习桌整理','按使用频率分类文具和纸质资料。','文具类线索更贴近学习场景。']],
+      items:[[0,'文具收纳','DEMO-D01','桌面笔筒',32,'相关'],[0,'线材整理','DEMO-D02','理线夹',90,'相关'],[1,'文件收纳','DEMO-D03','文件架',null,'未复核']]
+    }
+  };
   function mxPhase(elapsed){
-    const found=mxBoundaries.findIndex(end=>elapsed<end), stage=found<0?4:found;
-    return {stage,analysisReady:stage>=1,done:stage===4};
+    const stage=mxEnds.findIndex(end=>elapsed<end);
+    return {stage:stage<0?8:stage,group:elapsed<7?0:elapsed<10?1:elapsed<13?2:elapsed<24?3:4,analysis:elapsed>=7,scenes:elapsed>=10,needs:elapsed>=13,catalog:elapsed>=20,done:elapsed>=24};
   }
-  function mxFlowPaths(stage,w,h,compact,narrow){
-    const cx=w*(narrow && !compact ? .6 : .5), cy=compact?48:(narrow?90:116);
-    const curve=(x,y,tx,ty)=>`M${x},${y} C${(x+tx)/2},${y} ${(x+tx)/2},${ty} ${tx},${ty}`;
-    if(stage===3)return Array.from({length:32},(_,i)=>curve(i%2?w:0,30+Math.floor(i/2)/15*(h-49),cx,cy));
-    if(stage===0)return [0,1,2].map(i=>curve(compact?0:74,compact?33+i*14:(narrow?76+i*30:80+i*43),cx,cy));
-    return [0,1,2].map(i=>curve(cx,cy,w-8,compact?34+i*13:75+i*40));
+  function mxRows(store){
+    const rows=mxCatalog[store.kind].items.map((row,index)=>({index,scene:row[0],role:row[1],sku:row[2],name:row[3],stock:row[4],review:row[5]}));
+    return store.scope==='stock'?rows.filter(row=>row.stock!==null&&row.stock>0):store.scope==='custom'?rows.filter(row=>store.picked.includes(row.index)):rows;
+  }
+  function mxCounts(rows){
+    return {scenes:new Set(rows.map(row=>row.scene)).size,perScene:new Set(rows.map(row=>row.scene+'|'+row.sku)).size,unique:new Set(rows.map(row=>row.sku)).size};
+  }
+  function mxCanExport(store){return store.status==='ready'&&mxPhase(store.elapsed).done&&store.snapshot&&!store.stale&&mxRows(store).length>0}
+  function mxSelect(picked,indices,inverse=false){
+    const selected=new Set(picked),remove=indices.every(index=>selected.has(index));
+    indices.forEach(index=>{if(inverse?selected.has(index):remove)selected.delete(index);else selected.add(index)});
+    return [...selected];
+  }
+  function mxAdvance(store,seconds){
+    if(store.status!=='running')return false;
+    store.elapsed=Math.min(24,store.elapsed+Math.max(0,seconds));
+    if(store.elapsed===24){store.status='ready';store.snapshot=true}
+    return true;
+  }
+  function mxNewStore(id,title,country,kind='outdoor',status='running',elapsed=0){
+    return {id,title,country,kind,status,elapsed,snapshot:status==='ready',stale:false,scope:'all',picked:[],dedupe:true,open:[],materials:'商品名：便携烤炉、折叠桌（示例）'};
+  }
+  function mxNavigate(state,destination,id){
+    if(destination==='home'){state.page='home';return true}
+    if(destination==='new'){state.page='work';state.drafting=true;return true}
+    if(destination==='store'&&state.stores.some(store=>store.id===id)){state.selected=id;state.page='work';state.drafting=false;return true}
+    return false;
   }
   // MODEL END
-  const root=document.getElementById('metis-export-study');
-  const q=s=>root.querySelector(s), qa=s=>[...root.querySelectorAll(s)];
-  const reduced=window.matchMedia('(prefers-reduced-motion:reduce)');
-  const state={version:2,view:'workbench',scope:'all',picked:[],scene:0,content:'analysis',report:0,elapsed:0,paused:reduced.matches};
-  const design={accent:'#0a8fd4',radius:16};
-  const saved=window.openai?.widgetState?.privateContent;
-  function restore(value){
-    if(!value || typeof value!=='object'||value.version!==2)return;
-    if(['input','workbench','stores'].includes(value.view))state.view=value.view;
-    if(['all','stock','custom'].includes(value.scope))state.scope=value.scope;
-    if(['preview','analysis','custom'].includes(value.content))state.content=value.content;
-    if(Number.isInteger(value.scene)&&value.scene>=0&&value.scene<3)state.scene=value.scene;
-    if(Number.isInteger(value.report)&&value.report>=0&&value.report<6)state.report=value.report;
-    if(Number.isFinite(value.elapsed))state.elapsed=Math.max(0,Math.min(40,value.elapsed));
-    if(Array.isArray(value.picked))state.picked=[...new Set(value.picked.filter(i=>Number.isInteger(i)&&i>=0&&i<mxItems.length))];
-    if(typeof value.paused==='boolean')state.paused=value.paused;
-    if(reduced.matches)state.paused=true;
-    if(!mxPhase(state.elapsed).done)state.content='analysis';
+  const root=document.getElementById('metis-export-study'),q=selector=>root.querySelector(selector),qa=selector=>[...root.querySelectorAll(selector)];
+  let state={version:4,page:'home',drafting:false,selected:'outdoor',historyAll:false,stores:[mxNewStore('outdoor','周末户外生活馆','菲律宾','outdoor','ready',24),mxNewStore('desk','桌面整理研究所','马来西亚','desk','failed',17)]};
+  state.stores[1].materials='商品名：笔筒、抽屉分隔、理线夹（示例）';
+  const draft={files:[]};
+  let contentStoreId='';
+  const esc=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const current=()=>state.stores.find(store=>store.id===state.selected);
+  function label(store){return store.status==='failed'?'匹配中断':store.status==='cancelled'?'已停止':store.status==='ready'?'已完成':mxStageNames[mxPhase(store.elapsed).stage]}
+  function notice(message){q('#mx-notice').hidden=!message;q('#mx-notice').textContent=message}
+  function save(){
+    if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{layout:'首页管理店铺，工作页完成上传到导出',page:state.page,selected:state.drafting&&state.page==='work'?'新建店铺':current().title,scope:current().scope},privateContent:state}).catch(()=>{});
   }
-  restore(saved);
-  function save(){window.openai?.setWidgetState?.({modelContent:{design:'METIS 同页等待与阅读方案',page:state.view,exportScope:state.scope,motionStage:mxPhase(state.elapsed).stage,analysisSection:state.report},privateContent:{...state}})?.catch(()=>{});}
-  function notice(text){q('#mx-toast').textContent=text;}
-  function renderResult(){
-    const rows=mxChoose(state.scope,state.picked), count=mxCounts(rows), {done}=mxPhase(state.elapsed);
-    qa('[name=mx-scope]').forEach(el=>el.checked=el.value===state.scope);
-    q('#mx-count').innerHTML=done?`<strong>${count.scenes}</strong> 个场景 · <strong>${count.unique}</strong> 个不同主 SKU<br>按场景输出 ${count.perScene} 条，另附去重清单`:'';
-    q('[data-action=export]').disabled=!done||!rows.length;
-    q('[data-action=export]').textContent=done?'导出 Excel ↓':'商品准备中';
-    q('[data-action=adjust]').disabled=!done;
-    q('#mx-export-scope').disabled=!done;
-    q('[data-content=preview]').disabled=!done;
-    q('[data-content=preview]').textContent=done?`商品清单 · ${count.unique} 个主 SKU`:'商品清单 · 生成中';
-    q('#mx-preview-scope').textContent=state.content==='analysis'?'已生成 · 可先阅读':{all:'全部候选',stock:'仅泰国有货',custom:'自选商品'}[state.scope];
-    q('#mx-preview-title').textContent={custom:'调整导出商品',analysis:'店铺分析',preview:'导出内容预览'}[state.content];
-    qa('[data-content-panel]').forEach(el=>el.hidden=el.dataset.contentPanel!==state.content);
-    qa('[data-content]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.content===state.content)));
-    const perScene=i=>rows.filter(r=>r.scene===i).length;
-    q('#mx-scene-nav').innerHTML=mxScenes.map((s,i)=>`<button type="button" data-scene="${i}" aria-pressed="${i===state.scene}"><b>${s}</b><span>${perScene(i)} 条货号</span></button>`).join('');
-    q('#mx-preview-note').textContent=`当前场景「${mxScenes[state.scene]}」· ${perScene(state.scene)} 条；库存与复核为演示数据。`;
-    const visible=rows.filter(r=>r.scene===state.scene).sort((a,b)=>(b.stock??-1)-(a.stock??-1));
-    const reviewChip=review=>`<span class="mx-chip ${review==='不相关'?'mx-chip-no':review==='未复核'?'mx-chip-unknown':'mx-chip-ok'}">${review}</span>`;
-    q('#mx-table-rows').innerHTML=visible.length?visible.map(r=>`<tr><td><span class="mx-sku">${r.sku}</span></td><td><span class="mx-name">${r.name}</span><span class="mx-meta">${r.role}${reviewChip(r.review)}</span></td><td>${r.stock==null?'<span class="mx-dim">未核验</span>':r.stock===0?'<span class="mx-dim">无货</span>':r.stock}</td></tr>`).join(''):'<tr><td colspan="3"><div class="mx-empty">这个范围下没有商品</div></td></tr>';
-    // Keep native details open while checkboxes change.
-    if(!q('#mx-custom-list').children.length){
-      q('#mx-custom-list').innerHTML=mxScenes.map((s,i)=>`<details><summary>${s}</summary><button class="mx-text-button" type="button" data-group="${i}">整组选入 / 取消</button>${mxItems.map((r,j)=>r.scene===i?`<details><summary>${r.role}</summary><label><input type="checkbox" data-item="${j}"><span>${r.name}<br><span class="mx-sku">${r.sku} · ${r.stock==null?'库存未核验':r.stock+' 件'} · ${r.review}</span></span></label></details>`:'').join('')}</details>`).join('');
+  function restore(saved){
+    if(saved?.version!==4||!['home','work'].includes(saved.page)||typeof saved.drafting!=='boolean'||!Array.isArray(saved.stores)||saved.stores.length<1||saved.stores.length>12)return;
+    const valid=saved.stores.every(store=>store&&typeof store.id==='string'&&typeof store.title==='string'&&typeof store.country==='string'&&Object.hasOwn(mxCatalog,store.kind)&&Number.isFinite(store.elapsed)&&store.elapsed>=0&&store.elapsed<=24&&['ready','running','failed','cancelled'].includes(store.status)&&['all','stock','custom'].includes(store.scope)&&Array.isArray(store.picked)&&store.picked.every(Number.isInteger)&&Array.isArray(store.open)&&store.open.every(key=>typeof key==='string')&&typeof store.dedupe==='boolean'&&typeof store.materials==='string'&&typeof store.snapshot==='boolean'&&typeof store.stale==='boolean');
+    if(valid&&new Set(saved.stores.map(store=>store.id)).size===saved.stores.length&&saved.stores.some(store=>store.id===saved.selected))state=JSON.parse(JSON.stringify(saved));
+  }
+  function history(){
+    const list=state.historyAll?state.stores:state.stores.slice(0,3);
+    if(!state.historyAll&&!list.some(store=>store.id===state.selected))list[list.length-1]=current();
+    q('#mx-history-count').textContent=state.stores.length+' 家';
+    const host=q('#mx-history'),keys=list.map(store=>store.id).join('|');
+    if(host.dataset.rows!==keys){host.dataset.rows=keys;host.innerHTML=list.map(store=>'<button type="button" class="cursor-interaction" data-store="'+esc(store.id)+'"><span><strong>'+esc(store.title)+'</strong><small>'+esc(store.country)+'</small></span><span class="mx-status"></span><span class="mx-history-action"></span></button>').join('')}
+    qa('[data-store]').forEach(button=>{const store=state.stores.find(item=>item.id===button.dataset.store);button.querySelector('.mx-status').textContent=label(store);button.querySelector('.mx-history-action').textContent=store.status==='ready'?'查看结果 →':store.status==='failed'||store.status==='cancelled'?'继续处理 →':'查看进度 →'});
+    q('#mx-more').hidden=state.stores.length<=3;q('#mx-more').textContent=state.historyAll?'收起列表':'展开全部（'+state.stores.length+'）';
+  }
+  function exportState(){
+    const store=current(),phase=mxPhase(store.elapsed),counts=mxCounts(mxRows(store));
+    q('#mx-export').disabled=!mxCanExport(store);
+    q('#mx-export-hint').textContent=phase.done?(mxCanExport(store)?'Excel · '+counts.unique+' 个主 SKU':store.stale?'资料已变更，更新结果后导出':!store.snapshot?'需要补齐本次库存明细':'当前范围没有商品'):'完成后即可导出，无需逐条勾选';
+    q('#mx-export-options').hidden=!phase.done;
+    q('#mx-scope-title').textContent='导出范围：'+({all:'全部候选',stock:'仅目标国家有货',custom:'自选商品'}[store.scope])+' · 调整';
+    q('#mx-scope-count').textContent=counts.scenes+' 个场景 · 场景内去重 '+counts.perScene+' 条 · 跨场景去重 '+counts.unique+' 个主 SKU';
+    qa('[data-scope]').forEach(button=>button.setAttribute('aria-pressed',button.dataset.scope===store.scope));
+    q('#mx-custom-actions').hidden=store.scope!=='custom';q('#mx-dedupe').checked=store.dedupe;
+    const allPicked=mxCatalog[store.kind].items.every((_,index)=>store.picked.includes(index));
+    q('#mx-select-all').textContent=allPicked?'全不选':'全选';q('#mx-select-all').dataset.bulk=allPicked?'none':'all';
+    qa('[data-item]').forEach(input=>{input.hidden=store.scope!=='custom'||!phase.done;input.checked=store.picked.includes(Number(input.dataset.item))});
+    qa('[data-group]').forEach(input=>{const indices=input.dataset.group.split(',').map(Number),count=indices.filter(i=>store.picked.includes(i)).length;input.parentElement.hidden=store.scope!=='custom'||!phase.done;input.checked=count===indices.length;input.indeterminate=count>0&&count<indices.length});
+    qa('[data-count]').forEach(span=>{const indices=span.dataset.count.split(',').map(Number);span.textContent=phase.catalog?' · '+(store.scope==='custom'?'已选 '+indices.filter(i=>store.picked.includes(i)).length+' / ':'')+indices.length+' 个可选':''});
+  }
+  function progress(){
+    const store=current(),phase=mxPhase(store.elapsed);
+    q('#mx-steps').dataset.running=String(store.status==='running');
+    qa('#mx-steps li').forEach((li,index)=>{li.dataset.state=index<phase.group?'complete':'pending';if(index===phase.group)li.setAttribute('aria-current','step');else li.removeAttribute('aria-current');li.querySelector('i').textContent=index<phase.group?'✓':String(index+1)});
+    q('#mx-status').textContent=store.status==='ready'?'已完成，可以直接导出。':store.status==='failed'?'查找商品暂时失败，已生成的分析和场景仍可查看。':store.status==='cancelled'?'已停止。可以继续生成，已有内容会保留。':mxStageNames[phase.stage]+'…'+(phase.analysis?' 店铺分析已可阅读。':'')+'（演示时长已压缩）';
+    q('#mx-job-action').hidden=store.status==='ready';q('#mx-job-action').textContent=store.status==='running'?'停止':'继续生成';
+    q('#mx-job-error').hidden=store.status!=='failed';q('#mx-job-error').textContent='示例错误：商品服务连接超时。重试从未完成阶段继续，无需重新上传。';
+    q('#mx-log').innerHTML=mxStageNames.map((name,index)=>'<li>'+name+' · '+(index<phase.stage?'完成':index>phase.stage?'等待':store.status==='failed'?'失败':store.status==='cancelled'?'已停止':'处理中')+'</li>').join('');
+    exportState();
+  }
+  function renderScenes(){
+    const store=current(),phase=mxPhase(store.elapsed),data=mxCatalog[store.kind],host=q('#mx-scenes');
+    if(!q('#mx-scenes-detail').open)return;
+    if(host.dataset.store!==store.id){
+      host.dataset.store=store.id;
+      host.innerHTML=data.scenes.map((scene,index)=>'<details class="mx-scene" data-open="scene-'+index+'" data-scene="'+index+'"><summary class="cursor-interaction">'+esc(scene[0])+'<small data-count="'+mxRows({...store,scope:'all'}).filter(row=>row.scene===index).map(row=>row.index).join(',')+'"></small></summary><div data-scene-body></div></details>').join('');
+      host.querySelectorAll('details').forEach(detail=>detail.open=store.open.includes(detail.dataset.open));
     }
-    qa('[data-item]').forEach(el=>el.checked=state.picked.includes(Number(el.dataset.item)));
-    qa('[data-report]').forEach(el=>el.setAttribute('aria-pressed',String(Number(el.dataset.report)===state.report)));
-    qa('[data-report-panel]').forEach(el=>el.hidden=Number(el.dataset.reportPanel)!==state.report);
-  }
-  const stages=[
-    {name:'店铺分析',glyph:'report',action:'正在把店铺资料，汇成经营判断',copy:'已有信息 → 店铺方向',done:'已生成'},
-    {name:'使用场景',glyph:'scene',action:'分析已生成 · 正在展开使用场景',copy:'店铺方向 → 生活场景',done:''},
-    {name:'场景商品',glyph:'product',action:'可以继续阅读 · 正在衍生场景商品',copy:'场景 → 角色 → 商品',done:'已生成'},
-    {name:'商品匹配',glyph:'recall',action:'可以继续阅读 · 正在匹配货号与库存',copy:'多路召回 → 候选货号',done:''}
-  ];
-  // Keep the four stage elements alive throughout the journey so earlier stages shrink in place.
-  q('#mx-chain').innerHTML=stages.map((s,i)=>`<div class="mx-stage" data-stage="${i}" data-status="${i===0?'active':'pending'}" role="listitem"><div class="mx-stage-head"><em>0${i+1}</em><b>${s.name}</b></div><svg class="mx-flow" aria-hidden="true"></svg>${i===0?'<span class="mx-seed">店铺截图</span><span class="mx-seed">商品线索</span><span class="mx-seed">销售市场</span>':''}<span class="mx-glyph mx-${s.glyph}" aria-hidden="true"><span></span><span></span><span></span></span><span class="mx-wait-copy">${s.copy}</span><span class="mx-stage-status">${i===0?'正在生成':'等待前序'}</span></div>`).join('');
-  const stageEls=qa('[data-stage]'), lights=qa('.mx-light');
-  let tails=[], needPaths=true, lastPhase=-1, visible=true, visualTime=0;
-  function drawFlows(){
-    needPaths=false;tails=[];
-    const phase=mxPhase(state.elapsed), narrow=root.clientWidth<=520;
-    stageEls.forEach((el,i)=>{
-      const svg=el.querySelector('.mx-flow'), w=el.clientWidth,h=el.clientHeight;
-      if(i!==phase.stage||!w){svg.innerHTML='';return;}
-      svg.setAttribute('viewBox',`0 0 ${w} ${h}`);
-      svg.innerHTML=mxFlowPaths(i,w,h,phase.analysisReady,narrow).map(d=>`<path class="mx-flow-track" d="${d}"${i===3?' stroke-dasharray="1 5"':''}></path><path class="mx-flow-tail" d="${d}"></path>`).join('');
-      svg.querySelectorAll('.mx-flow-tail').forEach((p,j)=>{const length=p.getTotalLength(), size=i===3?3:14;p.style.strokeDasharray=`${size} ${length+size}`;tails.push({p,length,size,offset:j*.137});});
+    qa('[data-scene]').forEach(detail=>{
+      if(!detail.open)return;
+      const index=Number(detail.dataset.scene),scene=data.scenes[index],body=detail.querySelector('[data-scene-body]'),rows=mxRows({...store,scope:'all'}).filter(row=>row.scene===index);
+      if(body.dataset.needs!==String(phase.needs)){
+        body.dataset.needs=String(phase.needs);
+        body.innerHTML='<p>'+esc(scene[1])+'</p>'+(phase.needs?'<div class="mx-divider"><div class="mx-row mx-between"><h3>找到的商品</h3><label><input type="checkbox" data-group="'+rows.map(row=>row.index).join(',')+'"> 选择整个场景</label></div>'+[...new Set(rows.map(row=>row.role))].map((role,roleIndex)=>{const group=rows.filter(row=>row.role===role);return '<details class="mx-role" data-open="role-'+index+'-'+roleIndex+'" data-role="'+group.map(row=>row.index).join(',')+'"><summary class="cursor-interaction">'+esc(role)+'<small data-count="'+group.map(row=>row.index).join(',')+'"></small></summary><div data-role-body></div></details>'}).join('')+'</div>':'<p class="mx-muted mx-inline">正在生成该场景需要的商品。</p>');
+        body.querySelectorAll('details').forEach(nested=>nested.open=store.open.includes(nested.dataset.open));
+      }
+      body.querySelectorAll('[data-role]').forEach(role=>{
+        if(!role.open)return;
+        const target=role.querySelector('[data-role-body]');if(target.dataset.catalog===String(phase.catalog))return;
+        target.dataset.catalog=String(phase.catalog);
+        const group=rows.filter(row=>role.dataset.role.split(',').map(Number).includes(row.index));
+        target.innerHTML=phase.catalog?'<label><input type="checkbox" data-group="'+role.dataset.role+'"> 选择这类商品</label><ul class="mx-products">'+group.map(row=>'<li><div><label><input type="checkbox" data-item="'+row.index+'"> '+esc(row.name)+'</label><code>'+esc(row.sku)+'</code> <small>· '+esc(row.review)+'</small></div><span class="mx-stock">'+esc(store.country)+' '+(row.stock===null?'未核验':row.stock===0?'无货':row.stock+' 件')+'</span></li>').join('')+'</ul>':'<small>正在匹配具体货号</small>';
+      });
     });
+    exportState();
   }
-  // Three shops: the demo one tracks the live phase, so "did it finish?" is answered here.
-  const mxStores=[
-    {name:'户外生活店',country:'泰国',when:'刚刚',note:'便携烹饪 / 户外用餐',kind:'live'},
-    {name:'东南亚家居旗舰',country:'菲律宾',when:'昨天 18:40',note:'收纳 / 家用小件',kind:'done'},
-    {name:'庭院烧烤专营',country:'马来西亚',when:'09-19 建店',note:'还没生成过分析',kind:'idle'}
-  ];
-  function renderStores(){
-    const phase=mxPhase(state.elapsed), count=mxCounts(mxChoose(state.scope,state.picked));
-    const live=phase.done?{cls:'is-done',text:'文件已就绪，可导出'}
-      :phase.analysisReady?{cls:'is-live',text:'分析已生成 · 正在匹配货号与库存'}
-      :{cls:'is-live',text:'正在生成店铺分析'};
-    const steps=n=>`<span class="mx-store-steps" aria-hidden="true">${[0,1,2,3].map(i=>`<i data-on="${i<n}"></i>`).join('')}</span>`;
-    const actions=kind=>kind==='live'
-      ?'<button class="mx-button mx-primary" type="button" data-view="workbench">打开工作台</button>'
-      :kind==='done'
-      ?'<button class="mx-button mx-primary" type="button" data-view="workbench">打开并导出</button><button class="mx-button" type="button" data-view="workbench">查看商品清单</button>'
-      :'<button class="mx-button mx-primary" type="button" data-view="input">开始生成</button>';
-    q('#mx-store-list').innerHTML=mxStores.map(store=>{
-      const status=store.kind==='live'?live:store.kind==='done'?{cls:'is-done',text:'文件已就绪，可导出'}:{cls:'',text:'还没开始生成'};
-      const filled=store.kind==='live'?phase.stage+1:store.kind==='done'?4:0;
-      const ready=store.kind==='done'||(store.kind==='live'&&phase.done);
-      const tail=ready?`${count.perScene} 条场景商品 · ${count.unique} 个主 SKU`:store.note;
-      return `<article class="mx-store"><div><div class="mx-store-name">${store.name}<span class="mx-store-flag">${store.country}</span></div><div class="mx-store-meta"><span class="mx-store-status ${status.cls}"><span class="mx-store-dot" aria-hidden="true"></span>${status.text}</span><span>${store.when}</span><span>${tail}</span></div></div><div class="mx-store-actions">${steps(filled)}${actions(store.kind)}</div></article>`;
-    }).join('');
-  }
-  function renderProgress(){
-    const phase=mxPhase(state.elapsed), found=mxCounts(mxItems);
-    // The chain reports what the store produced, so it does not follow the export scope.
-    stages[1].done=`${found.scenes} 个场景`;stages[3].done=`${found.unique} 个主 SKU`;
-    root.dataset.motion=state.paused||phase.done?'paused':'playing';
-    q('#mx-journey').dataset.compact=String(phase.analysisReady);
-    q('#mx-work-area').dataset.ready=String(phase.analysisReady);
-    q('#mx-work-area').inert=!phase.analysisReady;
-    q('#mx-work-area').setAttribute('aria-hidden',String(!phase.analysisReady));
-    stageEls.forEach((el,i)=>{
-      const status=i<phase.stage?'done':i===phase.stage?'active':'pending';
-      el.dataset.status=status;
-      el.querySelector('.mx-stage-status').textContent=status==='done'?stages[i].done:status==='active'?'正在生成':'等待前序';
-      el.setAttribute('aria-label',stages[i].name+'，'+(status==='done'?'已完成':status==='active'?'正在生成':'等待前序'));
-      el.querySelector('.mx-glyph').style.transform='';
-    });
-    q('#mx-motion-action').textContent=phase.done?'选品文件已就绪，随时可以导出':stages[phase.stage].action;
-    q('#mx-task-status').innerHTML='<i></i>'+(phase.done?'可导出':phase.analysisReady?'分析已生成':'正在分析店铺');
-    q('#mx-reading-status').textContent=phase.done?'文件已就绪，阅读位置保留':['店铺分析中','场景正在生成，可以继续阅读','商品需求生成中，可以继续阅读','货号与库存匹配中，可以继续阅读'][phase.stage];
-    q('#mx-export-status').innerHTML=phase.done?'<strong>文件已准备好</strong><br>直接导出，或先调整商品范围。':'<strong>店铺分析已生成</strong><br>'+['正在整理资料。','正在补齐使用场景。','正在补齐场景商品。','正在匹配货号、库存与相关度。'][phase.stage];
-    q('[data-action=next]').disabled=phase.done||state.view!=='workbench';
-    q('[data-action=pause]').disabled=phase.done||state.view!=='workbench';
-    q('[data-action=pause]').textContent=state.paused?'继续演示':'暂停演示';
-    q('#mx-demo-note').textContent=reduced.matches?'减少动态效果已开启 · 可点下一阶段':state.view==='workbench'?'自动演示 · 等待时间已压缩':'演示已暂停 · 回到工作台继续';
-    if(lastPhase!==phase.stage){
-      const here=state.view==='workbench';
-      if(phase.stage===1)notice(here?'店铺分析已展开，后续流程在顶部继续。可以切换分析章节。':'这家店的分析已生成，打开工作台就能开始阅读。');
-      if(phase.done)notice(here?'文件已就绪。无需退出店铺分析，右侧即可模拟导出。':'这份选品文件已就绪，打开工作台即可导出。');
-      lastPhase=phase.stage;needPaths=true;
+  function renderContent(){
+    const store=current(),phase=mxPhase(store.elapsed),data=mxCatalog[store.kind];
+    q('#mx-current-title').textContent=store.title;q('#mx-current-meta').textContent=store.country+' · '+(store.stale?'上次结果':'本次导入');
+    q('#mx-analysis').hidden=!phase.analysis;q('#mx-waiting').hidden=phase.analysis;
+    q('#mx-conclusion').textContent=data.conclusion;
+    if(contentStoreId!==store.id){
+      contentStoreId=store.id;
+      q('#mx-report').innerHTML=[0,1,2,4,'scenes',3,5].map(index=>{if(index==='scenes')return '<article><h3>使用场景</h3><div data-report-scenes></div></article>';const report=data.reports[index];return '<article><h3>'+esc(report[0])+'</h3>'+report[1].split('\n').map(paragraph=>'<p>'+esc(paragraph)+'</p>').join('')+'</article>'}).join('');
+      q('#mx-scenes').innerHTML='';q('#mx-scenes').dataset.store='';
     }
-    renderResult();renderStores();
+    q('#mx-scenes-detail').hidden=!phase.scenes;
+    q('#mx-scenes-title').textContent='使用场景与商品 · '+data.scenes.length+' 个场景'+(phase.catalog?' · '+mxCounts(mxRows({...store,scope:'all'})).unique+' 个主 SKU':' · 商品匹配中');
+    const sceneSummary=q('[data-report-scenes]');
+    if(sceneSummary.dataset.ready!==String(phase.scenes)){sceneSummary.dataset.ready=String(phase.scenes);sceneSummary.innerHTML=phase.scenes?data.scenes.map(scene=>'<p>'+esc(scene[0])+'：'+esc(scene[1])+'</p>').join(''):'<p class="mx-muted">场景正在生成，完成后会显示在这里。</p>'}
+    q('#mx-materials').textContent=store.materials;
+    qa('details[data-open]').forEach(detail=>detail.open=store.open.includes(detail.dataset.open));
+    renderScenes();
+    progress();
   }
   function render(){
-    qa('[data-page]').forEach(el=>el.hidden=el.dataset.page!==state.view);
-    qa('.mx-nav [data-view]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.view===state.view)));
-    renderProgress();needPaths=true;
+    q('#mx-home').hidden=state.page!=='home';q('#mx-work').hidden=state.page!=='work';
+    q('#mx-import').hidden=!state.drafting;q('#mx-current').hidden=state.drafting;
+    q('#mx-work-label').textContent=state.drafting?'新建店铺':current().title;
+    history();if(state.page==='work'&&!state.drafting)renderContent();
   }
-  root.addEventListener('click',event=>{
-    const b=event.target.closest('button');if(!b||!root.contains(b)||b.disabled)return;
-    if(b.dataset.view){state.view=b.dataset.view;render();save();return;}
-    if(b.dataset.report!=null){state.report=Number(b.dataset.report);renderResult();save();return;}
-    if(b.dataset.content){state.content=b.dataset.content;renderResult();save();return;}
-    if(b.dataset.scene!=null){state.scene=Number(b.dataset.scene);renderResult();save();return;}
-    if(b.dataset.group!=null){const indexes=mxItems.flatMap((r,i)=>r.scene===Number(b.dataset.group)?[i]:[]);const all=indexes.every(i=>state.picked.includes(i));state.picked=all?state.picked.filter(i=>!indexes.includes(i)):[...new Set([...state.picked,...indexes])];renderResult();save();return;}
-    switch(b.dataset.action){
-      case 'sample':q('#mx-country').value='泰国';q('#mx-store-name').value='户外生活店';q('#mx-products').value='便携烤炉、露营餐具、折叠桌';notice('已填入示例资料。点击“开始生成”查看动效。');break;
-      case 'start':if(!q('#mx-country').value||!q('#mx-products').value.trim()){notice('请先选择国家，并填写商品名；也可以使用示例资料。');return;}
-      // The fixed sample is intentional: input does not submit or reinterpret real store data.
-      case 'replay':if(state.view!=='workbench')state.view='workbench';state.elapsed=0;state.content='analysis';state.report=0;state.paused=reduced.matches;notice('示例店铺演示：约 8 秒后自动展开分析，后续流程继续。');render();break;
-      case 'next':state.elapsed=mxBoundaries[mxPhase(state.elapsed).stage];renderProgress();break;
-      case 'pause':state.paused=!state.paused;renderProgress();break;
-      case 'adjust':state.scope='custom';state.content='custom';renderResult();notice('自选模式：可整组选入，也可展开到商品角色和 SKU。');break;
-      case 'export':{const c=mxCounts(mxChoose(state.scope,state.picked));notice(`模拟导出：${c.scenes} 个场景，${c.perScene} 条场景商品，${c.unique} 个不同主 SKU。正式版在此直接下载 Excel。`);break;}
+  function rememberOpen(){
+    if(contentStoreId!==state.selected)return;
+    const opened=new Set(current().open);
+    qa('details[data-open]').forEach(detail=>{if(detail.open)opened.add(detail.dataset.open);else opened.delete(detail.dataset.open)});
+    current().open=[...opened];
+  }
+  function focusPage(){
+    (state.page==='home'?q('#mx-new-store'):state.drafting?q('#mx-country'):q('#mx-back')).focus({preventScroll:true});
+    if(root.getBoundingClientRect().top<0)root.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+  }
+  function navigate(destination,id){
+    if(state.page==='work'&&!state.drafting)rememberOpen();
+    if(!mxNavigate(state,destination,id))return;
+    render();notice('');save();focusPage();
+  }
+  function showFiles(){q('#mx-file-list').innerHTML=draft.files.map((file,index)=>'<button type="button" class="cursor-interaction" data-remove="'+index+'" aria-label="移除 '+esc(file.name)+'">'+esc(file.name)+' ×</button>').join('')}
+  function addFiles(files){
+    const errors=[];
+    for(const file of Array.from(files)){
+      if(!file.type.startsWith('image/')||!file.size){errors.push('请选择有效图片');continue}
+      if(file.size>10*1024*1024){errors.push('每张图片最多 10 MB');continue}
+      if(draft.files.some(item=>item.name===file.name&&item.size===file.size&&item.lastModified===file.lastModified))continue;
+      if(draft.files.length>=20){errors.push('最多上传 20 张');break}
+      draft.files.push(file);
     }
-    save();
+    q('#mx-input-error').textContent=[...new Set(errors)].join('；');q('#mx-input-error').hidden=!errors.length;showFiles();
+  }
+  q('#mx-files').addEventListener('change',event=>{addFiles(event.target.files);event.target.value=''});
+  q('#mx-upload').addEventListener('dragover',event=>{event.preventDefault();q('#mx-upload').dataset.over='true'});
+  q('#mx-upload').addEventListener('dragleave',()=>q('#mx-upload').dataset.over='false');
+  q('#mx-upload').addEventListener('drop',event=>{event.preventDefault();q('#mx-upload').dataset.over='false';addFiles(event.dataTransfer.files)});
+  q('#mx-import').addEventListener('paste',event=>{const files=event.clipboardData?.files;if(files?.length){event.preventDefault();addFiles(files)}});
+  q('#mx-example').addEventListener('click',()=>{q('#mx-country').value='菲律宾';q('#mx-name').value='周末出游选品';q('#mx-products-text').value='便携烤炉\n折叠桌';q('#mx-products-input').open=true;q('#mx-input-error').hidden=true});
+  q('#mx-import').addEventListener('submit',event=>{
+    event.preventDefault();
+    const country=q('#mx-country').value,products=q('#mx-products-text').value.trim();
+    if(!country||(!draft.files.length&&!products)){q('#mx-input-error').hidden=false;q('#mx-input-error').textContent='请选择目标国家，并上传截图或填写商品名。';return}
+    if(state.stores.length>=12){q('#mx-input-error').hidden=false;q('#mx-input-error').textContent='本交互示例最多创建 10 个演示任务。';return}
+    const store=mxNewStore('demo-'+Date.now(),q('#mx-name').value.trim()||country+'店铺',country);
+    store.materials=[draft.files.length?draft.files.length+' 张本地截图':'',products?'商品名：'+products.slice(0,300):''].filter(Boolean).join('；')+'。本原型未处理这些内容，以下结果为固定示例。';
+    state.stores.unshift(store);mxNavigate(state,'store',store.id);
+    // Reset only after a successful local creation; history selection never touches the draft.
+    q('#mx-import').reset();q('#mx-products-input').open=false;draft.files=[];showFiles();q('#mx-input-error').hidden=true;
+    render();notice('已开始演示；分析、货号及库存均为固定示例，未调用真实服务。');save();focusPage();
+  });
+  q('#mx-new-store').addEventListener('click',()=>navigate('new'));
+  q('#mx-back').addEventListener('click',()=>navigate('home'));
+  root.addEventListener('toggle',event=>{
+    if(state.page!=='work'||state.drafting)return;
+    const detail=event.target;if(!detail.matches('details[data-open]')||current().open.includes(detail.dataset.open)===detail.open)return;
+    rememberOpen();
+    if(!detail.open&&detail.id==='mx-scenes-detail'){q('#mx-scenes').innerHTML='';delete q('#mx-scenes').dataset.store}
+    if(!detail.open&&detail.matches('[data-role]')){const body=detail.querySelector('[data-role-body]');body.innerHTML='';delete body.dataset.catalog}
+    if(!detail.open&&detail.matches('[data-scene]')){const body=detail.querySelector('[data-scene-body]');body.innerHTML='';delete body.dataset.needs}
+    renderScenes();save();
+  },true);
+  root.addEventListener('click',event=>{
+    const button=event.target.closest('button');if(!button)return;
+    if(button.dataset.store)navigate('store',button.dataset.store);
+    if(button.dataset.remove!==undefined){draft.files.splice(Number(button.dataset.remove),1);showFiles()}
+    if(button.dataset.scope){const store=current();store.scope=button.dataset.scope;if(store.scope==='custom'){q('#mx-scenes-detail').open=true;rememberOpen();renderScenes()}exportState();save()}
+    if(button.dataset.bulk){const store=current(),indices=mxCatalog[store.kind].items.map((_,i)=>i);store.picked=button.dataset.bulk==='all'?indices:button.dataset.bulk==='none'?[]:mxSelect(store.picked,indices,true);exportState();save()}
   });
   root.addEventListener('change',event=>{
-    const el=event.target;
-    if(el.name==='mx-scope'){state.scope=el.value;if(state.scope==='custom')state.content='custom';else if(state.content==='custom')state.content='preview';renderResult();save();}
-    if(el.dataset.item!=null){const i=Number(el.dataset.item);state.picked=el.checked?[...new Set([...state.picked,i])]:state.picked.filter(v=>v!==i);renderResult();save();}
+    const input=event.target,store=current();
+    if(input.dataset.item!==undefined){store.picked=mxSelect(store.picked,[Number(input.dataset.item)],true);exportState();save()}
+    if(input.dataset.group){store.picked=mxSelect(store.picked,input.dataset.group.split(',').map(Number));exportState();save()}
   });
-  window.addEventListener('openai:set_globals',event=>{const value=event.detail?.globals?.widgetState?.privateContent;if(value){restore(value);render();}});
-  const resize=new ResizeObserver(()=>{needPaths=true;});
-  stageEls.forEach(el=>resize.observe(el));
-  const intersection=new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;});intersection.observe(root);
-  reduced.addEventListener('change',()=>{if(reduced.matches)state.paused=true;renderProgress();});
-  render();
-  let previous=0;
-  function tick(now){
-    if(!root.isConnected){resize.disconnect();intersection.disconnect();return;}
-    const dt=previous?Math.min(.1,(now-previous)/1000):0;previous=now;
-    // Both the clock and the motion run only on the workbench: that is where the canvas is on
-    // screen, and a demo that finishes behind another page never shows the user its animation.
-    if(visible&&!document.hidden&&state.view==='workbench'){
-      if(!state.paused&&!mxPhase(state.elapsed).done){
-        const before=mxPhase(state.elapsed).stage;
-        state.elapsed=Math.min(40,state.elapsed+dt);
-        if(before!==mxPhase(state.elapsed).stage)renderProgress();
-      }
-      if(!reduced.matches&&!state.paused){
-        visualTime+=dt;
-        lights.forEach((el,i)=>{el.style.transform=`translate(${Math.sin(visualTime*.35+i*2)*37}%,${Math.cos(visualTime*.27+i)*26}%) scale(${1.2+Math.sin(visualTime*.25)*.2})`;});
-        const active=stageEls[mxPhase(state.elapsed).stage];
-        if(active)active.querySelector('.mx-glyph').style.transform=`translateY(${Math.sin(visualTime*2)*3}px) rotate(${Math.sin(visualTime)*3}deg)`;
-      }
-      if(needPaths)drawFlows();
-      if(!reduced.matches&&!state.paused)tails.forEach(({p,length,size,offset})=>{p.style.strokeDashoffset=String(-((visualTime*.38+offset)%1)*(length+size*2));});
-    }
-    requestAnimationFrame(tick);
+  q('#mx-more').addEventListener('click',()=>{state.historyAll=!state.historyAll;history();save()});
+  q('#mx-dedupe').addEventListener('change',event=>{current().dedupe=event.target.checked;save()});
+  q('#mx-job-action').addEventListener('click',()=>{const store=current();store.status=store.status==='running'?'cancelled':'running';progress();history();notice('');save()});
+  q('#mx-export').addEventListener('click',()=>{const store=current();if(!mxCanExport(store))return;const counts=mxCounts(mxRows(store));notice('模拟导出：'+counts.scenes+' 个场景，'+counts.unique+' 个主 SKU。正式文件包含主 SKU、子 SKU、店铺概况'+(store.dedupe?'、去重清单':'')+'和口径说明。此处不生成真实文件。');save()});
+  restore(window.openai?.widgetState?.privateContent);render();
+  window.addEventListener('openai:set_globals',event=>{const saved=event.detail?.globals?.widgetState?.privateContent;if(saved){restore(saved);render();notice('')}});
+  const timer=setInterval(()=>{
+    if(!root.isConnected){clearInterval(timer);return}
+    const before=mxPhase(current().elapsed).stage,labels=state.stores.map(label).join('|');
+    state.stores.forEach(store=>mxAdvance(store,1));
+    if(labels===state.stores.map(label).join('|'))return;
+    const after=mxPhase(current().elapsed).stage;
+    if(before!==after&&state.page==='work'&&!state.drafting){rememberOpen();renderContent()}
+    // A task continues when the user reads another store. No automatic selection or scrolling.
+    history();save();
+  },1000);
+  if(globalThis.Tweak){
+    const appearance={compact:true},tweak=new Tweak({container:root,onChange:()=>root.style.setProperty('--mx-gap',appearance.compact?'20px':'30px')});
+    tweak.addToggle(appearance,'compact',{label:'紧凑间距'});
   }
-  requestAnimationFrame(tick);
-  if(globalThis.Tweak){const tweak=new Tweak({container:root,onChange:()=>{root.style.setProperty('--mx-accent',design.accent);root.style.setProperty('--mx-radius',design.radius+'px');}});tweak.addColorPicker(design,'accent',{label:'主操作颜色',reference:'--mx-accent'});tweak.addSlider(design,'radius',{label:'表面圆角',min:8,max:22,unit:'px',reference:'--mx-radius'});}
 })();
 </script>

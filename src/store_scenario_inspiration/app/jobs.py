@@ -83,6 +83,13 @@ RETRIEVAL = "retrieval"
 RERANK = "rerank"
 STAGE_ORDER = (RECOGNIZE, CLUES, SYNTHESIS, SCENES, PRODUCTS, EXPAND, RETRIEVAL, RERANK)
 
+# Where a verdict is read when it is written down, and never acted on here: the
+# run keeps every candidate and the operator sets their own threshold when they
+# export. Removed from the settings form rather than defaulted in it, because a
+# store saved while "排除" was still offered would otherwise keep deleting rows
+# behind a control nobody can see any more.
+VERDICT_CUT = 50
+
 
 def choose_stages(stages: tuple[str, ...] | None) -> tuple[str, ...]:
     """The steps to run, in pipeline order. No request means the whole pipeline.
@@ -641,6 +648,22 @@ def run_retrieval(workspace: Workspace, settings, store_id: str, params: SearchP
     return f"{len(counts)} 个商品角色各召回 {min(counts, default=0)}–{max(counts, default=0)} 个 SKU（{where}）"
 
 
+def _scene_records(base) -> dict[str, dict]:
+    """The scenes the run wrote down, keyed by name.
+
+    What a scene is about lives in this file and nowhere else: the recall only
+    carries a scene name, so the review step reads the scene's own record —
+    including the scope of the activity it was written for — from here. A store
+    whose scenes predate any of that still has a name to be judged by.
+    """
+    path = base / "deepseek_scenes.json"
+    if not path.is_file():
+        return {}
+    return {scene["scene_name"]: scene
+            for scene in read_json(path).get("scenes") or []
+            if isinstance(scene, dict) and scene.get("scene_name")}
+
+
 def _rerank_asker(settings, provider: str) -> Ask:
     """Who answers, and where an answer may be reused instead of paid for again.
 
@@ -683,8 +706,9 @@ def run_rerank(workspace: Workspace, settings, store_id: str, params: SearchPara
                 else '，候选列表保持纯召回结果')
         return f'没有配置 {where} 密钥，跳过了这一步{tail}'
     try:
-        rerank_store(payload, ask=_rerank_asker(settings, provider), cut=params.rerank_cutoff,
-                     mode=params.rerank, provider=provider)
+        rerank_store(payload, ask=_rerank_asker(settings, provider), cut=VERDICT_CUT,
+                     mode=RERANK_MARK_ONLY, provider=provider,
+                     scenes=_scene_records(base))
     except (RuntimeError, ValueError, TypeError, KeyError, OSError) as error:
         # The recall is what the operator came for; the model's own words are the
         # only version of the failure they can act on.
@@ -697,9 +721,7 @@ def run_rerank(workspace: Workspace, settings, store_id: str, params: SearchPara
         what = summary['notes'][0] if summary['notes'] else '未获得复核答案'
         return (f"已复核 {summary['answered']} 件商品，但 {summary['failed']} 个场景没问上"
                 f"（{what}），候选已保留")
-    if params.rerank == RERANK_MARK_ONLY:
-        return f"已给 {summary['answered']} 件商品标上相关 / 不相关，都留着没有删"
-    return f"已去掉 {summary['dropped']} 条不相关的候选"
+    return f"已给 {summary['answered']} 件商品标上相关 / 不相关，都留着没有删"
 
 
 STAGE_RUNNERS = {

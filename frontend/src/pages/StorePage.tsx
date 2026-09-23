@@ -16,7 +16,6 @@ import {
 import { countryName } from "../countries";
 import { paramsEqual, validateParams, stageNotice, mergeStages } from "../operatorUx";
 import ParamsPanel from "../components/ParamsPanel";
-import BusinessEvidence from "../components/BusinessEvidence";
 import PhotoViewer from "../components/PhotoViewer";
 import SceneWorkbench from "../components/SceneWorkbench";
 import StageRail, { type RailStage } from "../components/StageRail";
@@ -41,7 +40,7 @@ const PIPELINE: { name: string; label: string; target: string; flag: keyof Stage
   { name: "recognize", label: "识别截图里的商品", target: "clues", flag: "recognized" },
   { name: "clues", label: "去掉你排除的商品", target: "clues", flag: "clues" },
   { name: "synthesis", label: "写店铺结论和人群策略", target: "analysis-summary", flag: "synthesis" },
-  { name: "scenes", label: "生成使用场景", target: "sku-recommendations", flag: "scenes" },
+  { name: "scenes", label: "生成场景", target: "analysis-scenes", flag: "scenes" },
   { name: "products", label: "列出每个场景要用的商品", target: "sku-recommendations", flag: "products" },
   { name: "expand", label: "补充搜索词", target: "", flag: "expansions" },
   { name: "retrieval", label: "找商品", target: "sku-recommendations", flag: "retrieval" },
@@ -111,6 +110,8 @@ export default function StorePage() {
     const data = await api.store(storeId);
     if (shown.current !== storeId) return null;
     setDetail(data);
+    // Start following an active job even if one artifact request needs a retry.
+    setJob((current) => current ?? data.job);
     const wanted = (name: string) => names === null || names.has(name);
     const [nextClues, nextAnalysis, nextRetrieval] = await Promise.all([
       wanted("clues") && data.stages.clues ? api.clues(storeId) : Promise.resolve(undefined),
@@ -136,30 +137,38 @@ export default function StorePage() {
     setDraft(null); setShot(null);
     drawn.current = { id: "", done: new Set() };
     load().catch((e: Error) => { if (shown.current === storeId) setError(e.message); });
+    return () => { shown.current = ""; };
   }, [load, storeId]);
 
   const running = isLive(job);
   const jobId = job?.id ?? "";
   useEffect(() => {
     if (!running || !jobId) return;
+    let pending = false;
+    let active = true;
     const timer = setInterval(async () => {
+      if (pending) return;
+      pending = true;
       try {
         const next = await api.job(jobId);
-        if (shown.current !== storeId) return;
-        setJob(next);
+        if (!active || shown.current !== storeId) return;
         if (drawn.current.id !== next.id) drawn.current = { id: next.id, done: new Set() };
         const landed = next.stages.filter((stage) => stage.status === "ready" && !drawn.current.done.has(stage.name));
         if (landed.length) {
-          landed.forEach((stage) => drawn.current.done.add(stage.name));
           const artifacts = new Set(landed.map((stage) => ARTIFACTS[stage.name]).filter(Boolean));
           await refresh(artifacts.size ? artifacts : null);
+          landed.forEach((stage) => drawn.current.done.add(stage.name));
         }
         if (!isLive(next)) await load();
+        else if (active) setJob(next);
       } catch (e) {
-        setError((e as Error).message);
-      }
+        if (active && (e as Error).message === "no such job") {
+          try { await load(); return; } catch { /* The visible retry below retains the error. */ }
+        }
+        if (active) setError(`进度暂时无法更新，正在重试。${(e as Error).message}`);
+      } finally { pending = false; }
     }, 2000);
-    return () => clearInterval(timer);
+    return () => { active = false; clearInterval(timer); };
   }, [running, jobId, storeId, refresh, load]);
 
   // Every run uses the settings as the form shows them, saved or not, and saving
@@ -193,9 +202,6 @@ export default function StorePage() {
         // A changed scene count must also refresh the scenes, even when the
         // button was originally rendered for a retrieval-only update.
         stagesToRun = mergeStages(nextStages ?? [], updated?.outdated ?? []);
-        if (stagesToRun.includes("recognize")) {
-          throw new Error("截图有新内容，请先重读之后再更新建议。");
-        }
       }
       const nextJob = await api.startJob(storeId, stagesToRun, recognitionOnly ? undefined : chosenParams);
       if (shown.current !== storeId) return false;
@@ -312,16 +318,17 @@ export default function StorePage() {
     const live = new Map((job?.stages ?? []).map((stage) => [stage.name, stage]));
     return PIPELINE.map((step) => {
       const stage = live.get(step.name);
-      if (stage) {
+      const stale = !isLive(job) && detail?.outdated?.includes(step.name);
+      if (stage && (!stale || stage.status === "failed")) {
         return {
           name: step.name,
           label: stage.label,
-          status: stage.status,
+          status: job?.status === "cancelled" && stage.status === "running" ? "pending" : stage.status,
           note: stage.error || stage.detail || "等待中",
           target: stage.status === "ready" ? step.target : "",
         };
       }
-      const saved = Boolean(detail?.stages[step.flag]);
+      const saved = Boolean(detail?.stages[step.flag]) && !stale;
       return {
         name: step.name,
         label: step.label,
@@ -347,36 +354,13 @@ export default function StorePage() {
     // Reading that as "nothing is behind" costs a button; reading it as an error
     // costs the whole page, which is how the operator ends up on a blank screen
     // with nothing to act on.
-    const behind = detail.outdated ?? [];
-    const reading = behind.filter((name) => name === "recognize" || name === "clues");
-    const writing = behind.filter((name) =>
-      ["synthesis", "scenes", "products", "expand"].includes(name));
-    const recall = behind.filter((name) => name === "retrieval" || name === "rerank");
-    // Reading comes first: everything below it is written from what it found.
-    if (reading.length) {
-      return {
-        label: "识别新增截图",
-        stages: reading,
-        title: "仅识别新增截图，会调用模型。",
-      };
-    }
-    if (!detail.stages.synthesis) {
-      return {
-        label: "生成经营建议",
-        stages: ["synthesis", "scenes", "products", "expand", "retrieval", "rerank"],
-        title: "按当前商品名单生成场景和商品匹配。会调用模型，费用以当前服务配置为准。",
-      };
-    }
-    if (writing.length || recall.length) {
-      const stages = [...writing, ...recall];
-      return {
-        label: writing.length ? "更新经营建议" : "更新推荐商品",
-        stages,
-        title: stageNotice(stages, detail.params),
-      };
-    }
+    const interrupted = job?.status === "failed" || job?.status === "cancelled" || job?.stages.some((stage) => stage.status === "failed");
+    const stages = mergeStages(detail.outdated ?? [], interrupted
+      ? (job?.stages ?? []).filter((stage) => stage.status !== "ready").map((stage) => stage.name) : []);
+    if (stages.length) return { label: interrupted ? "继续生成" : detail.stages.synthesis ? "更新结果" : "开始生成", stages, title: stageNotice(stages, detail.params) };
+    if (draft && !paramsEqual(draft, detail.params)) return { label: "应用设置并更新", stages: [], title: "按当前设置更新结果" };
     return null;
-  }, [detail]);
+  }, [detail, job, draft]);
 
   // Starting or updating a recommendation is always an explicit action.
   // Retrieval may include paid reranking, so saving a setting must not run it.
@@ -384,18 +368,22 @@ export default function StorePage() {
   if (!detail) {
     return (
       <section className="card">
-        <p className="muted">{error || "正在读取店铺…"}</p>
+        <p className="muted" role="status">{error || "正在读取店铺…"}</p>
+        {error && <button className="btn ghost" onClick={() => load().catch((e: Error) => setError(e.message))}>重新加载</button>}
+        <Link className="text-link" to="/">返回首页</Link>
       </section>
     );
   }
 
   const images = detail.store.images;
-  const scored = retrieval?.inventory === "available";
+  const exportBlocked = running || busy ? "商品仍在生成或更新，完成后即可导出。"
+    : draft && !paramsEqual(draft, detail.params) ? "生成设置已修改，请应用设置并更新结果后导出。"
+    : detail.export_blocked_reason ?? (detail.outdated?.length ? "资料或设置已变化，请更新结果后导出。" : "");
   const summary = running
-    ? `正在处理${job?.seconds ? ` · 已用 ${took(job.seconds)}` : ""}`
+    ? `正在生成${job?.seconds ? ` · 已用 ${took(job.seconds)}` : ""}${analysis ? " · 可先阅读店铺分析" : ""}`
     : job?.status === "failed" || job?.status === "cancelled"
       ? "部分步骤未完成，可继续处理"
-      : detail.outdated?.length ? "有结果需要更新" : analysis ? "经营建议已生成" : "等待生成经营建议";
+      : detail.outdated?.length ? "资料或设置已变化，等待更新" : retrieval ? "生成完成 · 查看商品后即可导出" : "等待开始生成";
 
   return (
     <>
@@ -406,7 +394,7 @@ export default function StorePage() {
       <section className="card store-head">
         <div className="store-head-top">
           <div>
-            <h2>{detail.store.store_name}</h2>
+            <h1>{detail.store.store_name}</h1>
             <p className="muted">
               {countryName(detail.store.country)} · {images.length} 张截图 · 已选 {detail.kept_clues.length} 类商品 ·
               已排除 {detail.excluded_clues.length} 类
@@ -427,7 +415,7 @@ export default function StorePage() {
             They can also be changed here, because a picture that should have
             been in the first upload is the ordinary case, not a reason to start
             over — and changing them here is what tells the page to reread. */}
-        <div className="shot-strip">
+        <details className="store-materials"><summary>店铺截图 <span className="muted">{images.length} 张 · 查看或补充</span></summary><div className="shot-strip">
           {images.map((image, index) => (
             <div className="shot" key={image.filename}>
               <button className="shot-open" onClick={() => setShot(index)} title="点击放大查看">
@@ -443,22 +431,29 @@ export default function StorePage() {
               onChange={addShots} disabled={busy || running} />
             <span>＋ 补充截图</span>
           </label>
-        </div>
+        </div></details>
       </section>
 
       {error && (
-        <p className="notice error" style={{ marginBottom: 16 }}>
+        <p className="notice error" role="alert" style={{ marginBottom: 16 }}>
           {error}
+          <button className="btn ghost small" onClick={() => load().catch((e: Error) => setError(e.message))}>重新加载</button>
         </p>
       )}
 
       {hint && <p className="notice warn" role="status">{hint}</p>}
-      {analysis && (running || Boolean(detail.outdated?.length)) && (
-        <p className="notice warn" role="status">{running ? "正在更新建议，页面中的结果可能尚未全部更新。" : "以下为上次分析结果。资料或设置已有变化，更新后再作为当前建议使用。"}</p>
+      {(job?.status === "failed" || job?.status === "cancelled") && <p className="notice warn" role="status">{job.status === "cancelled" ? "生成已停止" : "生成未完成"}，已完成的内容会保留。点击「继续生成」完成剩余步骤。</p>}
+      {/* Only when nothing is running: while a run is in flight the rail above
+          already says so, and "please update" would be asking for the update
+          that is already happening. */}
+      {analysis && !running && Boolean(detail.outdated?.length) && (
+        <p className="notice warn" role="status">以下为上次分析结果。资料或设置已有变化，请更新后再使用。</p>
       )}
 
       <div className="workbench">
         <main className="workbench-main">
+          {!analysis && <section className="card analysis-wait" id="analysis-summary" data-running={running}><p className="eyebrow">店铺分析</p><h2>{running ? "正在整理这家店的经营方向" : "准备生成店铺分析"}</h2><p className="muted">分析完成后将在这里展开；场景与商品匹配会接着进行，无需再次操作。</p></section>}
+          <details className="workspace-settings"><summary>商品资料与生成设置 <span className="muted">需要调整时展开</span></summary>
           {clues && (
             <details className="card" id="clues">
               <summary>
@@ -554,14 +549,12 @@ export default function StorePage() {
             onDraft={setDraft}
             onBusyChange={setBusy}
           />
+          </details>
 
           {analysis && (
             <>
-              <nav className="analysis-nav" aria-label="报告导航">
-                <a href="#analysis-summary">核心结论</a><a href="#analysis-structure">店铺与产品结构</a><a href="#analysis-strategy">人群与策略</a><a href="#sku-recommendations">场景与可选商品</a>
-              </nav>
               <section className="card" id="analysis-summary">
-                <h2>核心结论</h2>
+                <p className="eyebrow">店铺分析 / 01</p><h2>执行结论</h2>
                 {analysis.reintroduced.length > 0 && (
                   <p className="notice warn">
                     上一轮结果里有 {analysis.reintroduced.length} 处把已被你排除的商品又写了回来（
@@ -573,73 +566,77 @@ export default function StorePage() {
                 <p className="evi">{analysis.manager_summary.business_opportunity}</p>
                 <h3 className="sub">建议先做这几件事</h3>
                 <ol className="actions">
-                  {analysis.manager_summary.recommended_actions.map((action) => (
+                  {(analysis.manager_summary.recommended_actions ?? []).map((action) => (
                     <li key={action}>{action}</li>
                   ))}
                 </ol>
-                {analysis.manager_summary.decision_boundary && (
-                  <details className="operator-scope"><summary>建议的适用范围</summary><p className="muted">{analysis.manager_summary.decision_boundary}</p></details>
-                )}
+                {/* The picture of the shop sits inside the conclusion rather
+                    than beside it: it is what the conclusion was drawn from,
+                    and read on its own it is a description with nothing to act
+                    on. */}
+                <div className="card-part">
+                  <h3 className="sub">店铺画像</h3>
+                  <Judged section={analysis.store_profile} />
+                </div>
               </section>
 
-              <BusinessEvidence context={analysis.business_context} />
-              <section className="card" id="analysis-structure">
-                <h2>店铺与产品结构</h2>
-                <h3 className="sub">店铺画像</h3>
-                <Judged section={analysis.store_profile} />
-                <h3 className="sub">当前产品结构</h3>
+              <section className="card" id="analysis-current">
+                <p className="eyebrow">店铺分析 / 02</p><h2>当前产品结构</h2>
                 <Judged section={analysis.current_product_structure} />
-                <h3 className="sub">未来产品结构</h3>
+              </section>
+
+              {/* One card, two lists: who the shop is talking to, and what those
+                  people are doing. They are read against each other — a scene
+                  with no audience under it is a guess — but they stay separate
+                  headings, because "who" and "when" are different answers. */}
+              <section className="card" id="analysis-audience">
+                <p className="eyebrow">店铺分析 / 03</p><h2>人群与场景</h2>
+                <h3 className="sub">目标人群</h3>
+                <Cards items={analysis.audiences.map((item) => ({ name: item.audience_name, description: item.description }))} />
+                <div className="card-part" id="analysis-scenes">
+                  <h3 className="sub">场景方向</h3>
+                  {analysis.scenes.length ? <Cards items={analysis.scenes.map((scene) => ({ name: scene.scene_name, description: `${scene.audience} · ${scene.user_need}` }))} /> : <p className="muted">场景仍在生成，完成后会自动显示。</p>}
+                </div>
+              </section>
+
+              {/* Where the shop is going, and what to do about it this week. The
+                  structure keeps its own body and its推进顺序; the strategy is
+                  read right after it because it is the same decision. */}
+              <section className="card" id="analysis-future">
+                <p className="eyebrow">店铺分析 / 04</p><h2>未来产品结构与运营策略</h2>
                 <Judged section={analysis.future_product_structure} />
                 <h4 className="sub">推进顺序</h4>
                 <ol className="actions">
-                  {analysis.future_product_structure.priority_order.map((item) => (
+                  {(analysis.future_product_structure.priority_order ?? []).map((item) => (
                     <li key={item}>{item}</li>
                   ))}
                 </ol>
+                <div className="card-part" id="analysis-strategy">
+                  <h3 className="sub">运营策略</h3>
+                  <Cards
+                    items={analysis.operation_strategy.map((strategy) => ({
+                      name: strategy.strategy_name,
+                      description: strategy.description,
+                    }))}
+                  />
+                </div>
               </section>
 
-              <section className="card" id="analysis-strategy">
-                <h2>
-                  人群与运营策略
-                  <span className="count">
-                    {analysis.audiences.length} 个人群 · {analysis.operation_strategy.length} 条策略
-                  </span>
-                </h2>
-                <h3 className="sub">人群</h3>
-                <Cards
-                  items={analysis.audiences.map((audience) => ({
-                    name: audience.audience_name,
-                    description: audience.description,
-                  }))}
-                />
-                <h3 className="sub">运营策略</h3>
-                <Cards
-                  items={analysis.operation_strategy.map((strategy) => ({
-                    name: strategy.strategy_name,
-                    description: strategy.description,
-                  }))}
-                />
-              </section>
-
-              <div id="sku-recommendations"><SceneWorkbench key={storeId} storeId={storeId} scenes={analysis.scenes} retrieval={retrieval} /></div>
-
-              {!retrieval && (
-                <section className="card">
-                  <p className="notice warn">
-                    经营建议已生成，商品匹配尚未完成。已有建议可以先查看。
-                  </p>
-                </section>
-              )}
+              <SceneWorkbench key={storeId} storeId={storeId} scenes={analysis.scenes} retrieval={retrieval} exportBlocked={exportBlocked} />
             </>
           )}
 
-          {scored === false && retrieval && (
-            <p className="muted">{countryName(retrieval.country)} 库存暂不可用，请在上架前核实。</p>
-          )}
         </main>
 
-        <StageRail stages={railStages} summary={summary} running={running} onCancel={cancel} />
+        {/* Where the run has got to, and what there is on the page to read: the
+            two questions the operator asks while waiting, in the one column
+            that is not moving under them. */}
+        <aside className="workspace-side">
+          <StageRail stages={railStages} summary={summary} running={running} onCancel={cancel} />
+          <nav className="workspace-nav" aria-label="本页导航"><p className="eyebrow">本页内容</p>{[
+            ["analysis-summary", "执行结论"], ["analysis-current", "当前产品结构"], ["analysis-audience", "人群与场景"], ["analysis-future", "未来产品结构与运营策略"], ["sku-recommendations", "场景与商品"], ["export-section", "导出 Excel"],
+          ].map(([id, label], index) => analysis ? <a key={id} href={`#${id}`} className={id === "export-section" ? "nav-export" : ""}><span>{String(index + 1).padStart(2, "0")}</span>{label}{id === "export-section" && <span aria-hidden="true">↓</span>}</a> : <span className="nav-pending" key={id}>{label}</span>)}<p className="muted">{analysis ? "点击章节，快速定位" : "分析生成后即可查看"}</p></nav>
+        </aside>
       </div>
 
       <PhotoViewer

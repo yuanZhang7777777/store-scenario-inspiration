@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes, useParams } from "react-router-dom";
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 
 import StorePage from "./pages/StorePage";
 import StoresPage from "./pages/StoresPage";
@@ -9,17 +10,15 @@ function StoreRoute() {
 }
 
 export default function App() {
+  const { pathname } = useLocation();
+  useEffect(() => { window.scrollTo({ top: 0, behavior: "instant" }); }, [pathname]);
   return (
     <div className="shell">
-      <div className="hero">
-        <p className="eyebrow">Store Scenario Inspiration</p>
-        <h1>店铺经营助手</h1>
-        <p className="subtitle">
-          上传截图，查看经营建议，找到公司产品库里的可选商品。
-        </p>
-      </div>
+      <header className="hero"><span className="brand-mark" aria-hidden="true">M</span><strong>METIS</strong><span>店铺分析与选品</span></header>
+      <StoresPage />
       <Routes>
-        <Route path="/" element={<StoresPage />} />
+        <Route path="/" element={null} />
+        <Route path="/stores/new" element={null} />
         <Route path="/stores/:storeId" element={<StoreRoute />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

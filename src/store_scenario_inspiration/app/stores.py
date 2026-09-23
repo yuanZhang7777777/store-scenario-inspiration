@@ -35,7 +35,7 @@ STAGE_SETTINGS = {
     "products": ("products_per_scene", "temperature"),
     "expand": ("expansion_terms", "temperature"),
     "retrieval": ("recall_limit", "stock_filter"),
-    "rerank": ("rerank", "rerank_provider", "rerank_cutoff"),
+    "rerank": ("rerank_provider",),
 }
 
 # name, the flag in stages() that says it finished, what it reads, what it writes.

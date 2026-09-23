@@ -331,11 +331,10 @@ def _param_label(name: str, value) -> str:
     return str(value)
 
 
-def _mode_label(mode) -> str:
-    """The dropdown's own words, so the sheet never shows a raw setting name."""
-    if not mode:
-        return "没跑"
-    return _param_label("rerank", mode)
+def _related_label(related_only: bool) -> str:
+    """What the export did with the model's doubts, in the operator's words."""
+    return ("只看相关的：模型标为待复核的候选没有导出" if related_only
+            else "全部导出：模型标为待复核的候选也导出了")
 
 
 # The models by the name the operator picks them by, not by the setting value.
@@ -350,7 +349,7 @@ def _model_name(provider) -> str:
 
 
 def notes_for(*, retrieval: dict, params: dict, store: dict, store_id: str,
-              stock_path: Path, exported: int) -> list[tuple[str, str]]:
+              stock_path: Path, exported: int, related_only: bool = False) -> list[tuple[str, str]]:
     """Describe the snapshot actually used, never the file present at export time."""
     rerank = retrieval.get('rerank') or {}
     snapshot = retrieval.get('inventory_snapshot') or {}
@@ -372,9 +371,10 @@ def notes_for(*, retrieval: dict, params: dict, store: dict, store_id: str,
         ('库存读取时间', str(snapshot.get('captured_at') or '未记录')),
         ('这次读到了吗', '读到了' if read else '未核验，本次候选不提供库存承诺'),
         ('', ''), ('相关性复核', ''),
-        ('实际用的模式', _mode_label(rerank.get('mode'))),
+        ('模型怎么处理的', '只标相关 / 待复核，没有删'),
         ('实际用的模型', _model_name(rerank.get('provider'))),
-        ('实际用的把握阈值', str(rerank.get('cutoff') or '')),
+        ('标注时用的把握阈值', str(rerank.get('cutoff') or '')),
+        ('导出时怎么处理', _related_label(related_only)),
         ('问了/答了/剔除/失败', '{}/{}/{}/{}'.format(rerank.get('asked', 0), rerank.get('answered', 0),
                                               rerank.get('dropped', 0), rerank.get('failed', 0))),
         ('', ''), ('结果使用说明', ''),
@@ -389,19 +389,19 @@ def notes_for(*, retrieval: dict, params: dict, store: dict, store_id: str,
 
 def workbook(blocks: list[tuple[str, list[list]]], summary: list[tuple[str, str]],
              notes: list[tuple[str, str]], *, country: str,
-             children: list[list], deduped: list[list] | None = None) -> bytes:
+             children: list[list], deduped: list[list]) -> bytes:
     """The scene board, the sub-SKU list, the store line, the buy-list and the notes.
 
-    The buy-list is optional because it is the operator's call: a board that
-    repeats a SKU under every scene it answers is what the first sheet is for,
-    and someone reading scene by scene does not need the same list again.
+    Both the board and the buy-list are always in the file. A board that repeats
+    a SKU under every scene it answers is the right shape for reading scene by
+    scene, but it is not a list anyone can hand to purchasing, so the one-row-
+    per-SKU version rides along rather than being something to ask for.
     """
     book = Workbook()
     _scene_board(book.active, blocks, country)
     _sub_sku_list(book, children, country)
     _store_line(book, summary)
-    if deduped is not None:
-        _buy_list(book, deduped, country)
+    _buy_list(book, deduped, country)
     _legend(book, notes)
     headline = _headline(summary, country)
     for sheet in book.worksheets:

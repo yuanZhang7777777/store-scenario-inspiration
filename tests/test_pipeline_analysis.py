@@ -138,6 +138,40 @@ def test_volunteered_scene_fields_are_dropped_rather_than_stored() -> None:
     assert normalized == [scene()]
 
 
+def test_the_scope_of_a_scene_is_kept_with_it() -> None:
+    """The scope lists are what the scene's recalled SKUs are judged against, so
+    they have to survive the trip from the model's answer to the stored scene."""
+    answer = {**scene(), "scope_in": ["搭帐篷过夜", "做饭"], "scope_out": ["通勤"]}
+
+    assert validate_scenes({"model": MODEL, "scenes": [answer]}, scene_count=1) is None
+    assert normalize_scenes({"scenes": [answer]}) == [answer]
+
+
+def test_a_scope_that_is_not_a_list_of_lines_is_rejected() -> None:
+    """A sentence where the areas should be is not a scope; the judgement would
+    read it as one area and stop being able to tell 桌面装饰 from 迎宾展示."""
+    for bad in ("搭帐篷过夜", [7], [""], ["搭帐篷过夜"] * 20):
+        with pytest.raises(ValueError, match="scope_in"):
+            validate_scenes(
+                {"model": MODEL, "scenes": [{**scene(), "scope_in": bad}]}, scene_count=1)
+
+
+def test_a_scene_written_before_scopes_existed_is_still_readable() -> None:
+    """Scenes already on disk have four fields. They are judged with the name
+    alone rather than refused, so the review step still runs on an old store."""
+    assert validate_scenes({"model": MODEL, "scenes": [scene()]}, scene_count=1) is None
+    assert normalize_scenes({"scenes": [scene()]}) == [scene()]
+
+
+def test_the_published_reading_carries_the_scopes() -> None:
+    scenes = {"scenes": [{**scene(), "scope_in": ["搭帐篷过夜"], "scope_out": ["通勤"]}]}
+
+    scene_out = assemble(scenes, [{"scene_name": "周末露营", "products": [product()]}], synthesis())["scenes"][0]
+
+    assert scene_out["scope_in"] == ["搭帐篷过夜"]
+    assert scene_out["scope_out"] == ["通勤"]
+
+
 def test_a_hot_scene_answer_is_read_rather_than_thrown_away(monkeypatch) -> None:
     """The model sometimes presses enter inside a sentence instead of writing \\n.
     Strict JSON calls that illegal, but the answer is whole and already paid for."""

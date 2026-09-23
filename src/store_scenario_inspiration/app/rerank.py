@@ -51,9 +51,12 @@ STOCK = {True: 0, None: 1, False: 2}
 
 WORKERS = 4
 
-# One scene's worth of questions, and the model's spend answering them.
+# One scene's worth of questions, and the model's spend answering them. The scene
+# itself is the first argument: how it is put to the model is the provider's
+# business — it decides the wording and how many names it shows — while this
+# module only hands it the same scene record the operator's run wrote down.
 # Every provider answers in this shape, so the switch cannot reach the rules.
-Ask = Callable[[str, list[dict]], tuple[Verdicts, dict]]
+Ask = Callable[[dict, list[dict]], tuple[Verdicts, dict]]
 
 
 def _is_confidently_unrelated(verdict: dict | None, cutoff: float) -> bool:
@@ -125,7 +128,8 @@ def strip_verdicts(payload: dict) -> int:
     return restored
 
 
-def rerank_scenes(roles: list[dict], *, ask: Ask, cutoff: float, drop: bool) -> tuple[list[dict], dict]:
+def rerank_scenes(roles: list[dict], *, ask: Ask, cutoff: float, drop: bool,
+                  records: dict[str, dict] | None = None) -> tuple[list[dict], dict]:
     """One verdict pass per scene, in parallel over the network.
 
     The roles keep their own candidate lists and are handed back unchanged in
@@ -133,21 +137,28 @@ def rerank_scenes(roles: list[dict], *, ask: Ask, cutoff: float, drop: bool) -> 
     that recalled it, which is the whole point: it is one answer, shown wherever
     it applies.
 
+    What a scene is about is not in the retrieval payload — the roles only carry
+    a name — so the scenes the run wrote down are handed in beside it, keyed by
+    name. A store whose recall predates them, or a name that no longer matches,
+    is judged with the name alone rather than not judged at all.
+
     A scene the model refused is reported in the model's own words, because that
     is the only version the operator can act on: "TypeSafe 403" is a key or an
     outage, "复核未完成（RuntimeError）" is nothing they can do anything about.
     """
     summary = {'asked': 0, 'answered': 0, 'dropped': 0, 'failed': 0, 'notes': [], 'usage': {}}
+    records = records or {}
     scenes = OrderedDict()
     for role in roles:
         scenes.setdefault(role['scene_name'], []).append(role)
 
     def one(item):
         scene_name, scene_roles = item
+        record = records.get(scene_name) or {'scene_name': scene_name}
         if not any(role.get('candidates') for role in scene_roles):
             return item, None, None, {}
         try:
-            verdicts, usage = ask(scene_name, scene_roles)
+            verdicts, usage = ask(record, scene_roles)
             if not isinstance(verdicts, dict) or not isinstance(usage, dict):
                 raise ValueError('invalid verdict response')
             safe = {}
@@ -201,18 +212,20 @@ def rerank_scenes(roles: list[dict], *, ask: Ask, cutoff: float, drop: bool) -> 
 
 
 def rerank_store(
-    payload: dict, *, ask: Ask, cut: int, mode: str, provider: str
+    payload: dict, *, ask: Ask, cut: int, mode: str, provider: str,
+    scenes: dict[str, dict] | None = None,
 ) -> dict:
     """Add verdicts to one retrieval payload, in place, and describe what changed."""
-    scenes, summary = rerank_scenes(
+    judged, summary = rerank_scenes(
         payload.get("scenes") or [],
         ask=ask,
         cutoff=cut / 100,
         drop=mode != RERANK_MARK_ONLY,
+        records=scenes,
     )
     summary["mode"] = mode
     summary["cutoff"] = cut
     summary["provider"] = provider
-    payload["scenes"] = scenes
+    payload["scenes"] = judged
     payload["rerank"] = {"schema": SCHEMA_RERANK, **summary}
     return payload

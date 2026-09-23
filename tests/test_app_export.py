@@ -339,7 +339,7 @@ def test_the_store_line_reads_across_rather_than_down() -> None:
     the table the sheet exists for is somewhere below them."""
     payload = workbook([], summaries(analysis(("客厅", ["桌布"])),
                                      {"store_name": "店"}, "TH"), [], country="TH",
-                       children=[])
+                       children=[], deduped=[])
     sheet = load_workbook(io.BytesIO(payload))["店铺概况"]
 
     labels = [cell.value for cell in sheet[1]]
@@ -357,7 +357,7 @@ def test_a_long_conclusion_still_fits_inside_one_excel_row() -> None:
     payload = workbook([], [("店铺名称", "店"), ("国家", "泰国"), ("店铺画像", ""),
                             ("当前产品结构", ""), ("未来产品结构", "很长的结论" * 140),
                             ("人群", ""), ("场景", ""), ("未来运营策略", "")], [],
-                       country="TH", children=[])
+                       country="TH", children=[], deduped=[])
     sheet = load_workbook(io.BytesIO(payload))["店铺概况"]
 
     assert sheet.row_dimensions[2].height < MAX_ROW_POINTS
@@ -368,7 +368,7 @@ def test_no_row_is_ever_asked_for_more_height_than_excel_will_draw() -> None:
     would lose its tail behind the row's edge on a sheet that looked complete."""
     rows = [[f"SKU-{index:02d}", "很长很长的中文名称" * 3, "12"] for index in range(60)]
 
-    payload = workbook([("客厅", rows)], [], [], country="TH", children=[])
+    payload = workbook([("客厅", rows)], [], [], country="TH", children=[], deduped=[])
 
     heights = [dim.height for dim in
                load_workbook(io.BytesIO(payload))["主SKU清单"].row_dimensions.values()
@@ -402,7 +402,7 @@ def test_two_scenes_are_two_tables_and_not_one_wide_one() -> None:
     """Flush against each other the last column of one scene and the first of the
     next read as one very wide table with a stray header in the middle."""
     sheet = load_workbook(io.BytesIO(workbook(two_scenes(), [], [], country="TH",
-                                              children=[])))["主SKU清单"]
+                                              children=[], deduped=[])))["主SKU清单"]
 
     # Scene one holds columns A-C and its blank, so scene two opens two columns
     # past where the eye expects it — that gap is what separates the blocks.
@@ -414,7 +414,7 @@ def test_two_scenes_are_two_tables_and_not_one_wide_one() -> None:
 
 def test_the_scene_title_and_its_header_read_as_headers() -> None:
     sheet = load_workbook(io.BytesIO(workbook(two_scenes(), [], [], country="TH",
-                                              children=[])))["主SKU清单"]
+                                              children=[], deduped=[])))["主SKU清单"]
 
     title = sheet.cell(row=1, column=1)
     assert title.value == "客厅"
@@ -434,7 +434,7 @@ def test_every_cell_of_the_board_is_bordered_so_a_row_can_be_followed() -> None:
     wrote on the cells a merge covers. The gutter columns between the blocks are
     left bare on purpose, so they are simply not written.
     """
-    payload = workbook(two_scenes(), [], [], country="TH", children=[])
+    payload = workbook(two_scenes(), [], [], country="TH", children=[], deduped=[])
 
     for row, styled in styled_cells(payload).items():
         assert styled and all(styled), row
@@ -444,7 +444,7 @@ def test_a_count_lands_as_a_number_the_column_can_be_sorted_by() -> None:
     """Written as text the quantity column only looks sorted: Excel sorts "9"
     above "40". A number makes the column sort and filter like one."""
     sheet = load_workbook(io.BytesIO(workbook(two_scenes(), [], [], country="TH",
-                                              children=[])))["主SKU清单"]
+                                              children=[], deduped=[])))["主SKU清单"]
 
     cell = sheet.cell(row=3, column=3)
     assert cell.value == 12.0
@@ -457,7 +457,7 @@ def test_the_flat_lists_keep_their_header_on_screen_and_on_the_page() -> None:
     rows = [[f"SKU-{index:02d}", f"名称{index}", "C-1", "子款", 3.0, "客厅 · 桌布"]
             for index in range(60)]
     sheet = load_workbook(io.BytesIO(workbook([], [], [], country="TH",
-                                              children=rows)))["子SKU清单"]
+                                              children=rows, deduped=[])))["子SKU清单"]
 
     assert sheet.freeze_panes == "A2"
     assert sheet.auto_filter.ref == "A1:F61"
@@ -466,7 +466,7 @@ def test_the_flat_lists_keep_their_header_on_screen_and_on_the_page() -> None:
 
 def test_the_prose_sheets_hide_the_grid_so_it_stops_cutting_the_sentences() -> None:
     payload = workbook(two_scenes(), summaries(analysis(), {}, "TH"), [],
-                       country="TH", children=[])
+                       country="TH", children=[], deduped=[])
     book = load_workbook(io.BytesIO(payload))
 
     assert book["店铺概况"].sheet_view.showGridLines is False
@@ -481,7 +481,7 @@ def test_a_group_heading_in_the_notes_is_a_bar_rather_than_one_more_line() -> No
     headings dissolve into the lines they are meant to separate."""
     sheet = load_workbook(io.BytesIO(workbook([], [], [("店铺", "店"), ("库存口径", ""),
                                                        ("库存快照文件", "x.xlsx")],
-                                              country="TH", children=[])))["口径说明"]
+                                              country="TH", children=[], deduped=[])))["口径说明"]
 
     heading = sheet.cell(row=2, column=1)
     assert heading.value == "库存口径"
@@ -494,7 +494,7 @@ def test_every_page_says_which_store_and_which_day_it_came_from() -> None:
     it, and a stack of these from three stores is otherwise indistinguishable."""
     sheet = load_workbook(io.BytesIO(workbook(
         [], [("店铺名称", "Shopee-15005TH"), ("国家", "泰国")], [], country="TH",
-        children=[])))["主SKU清单"]
+        children=[], deduped=[])))["主SKU清单"]
 
     assert "Shopee-15005TH" in sheet.oddHeader.left.text
     assert "泰国" in sheet.oddHeader.left.text
@@ -573,7 +573,7 @@ def test_the_export_arrives_as_a_named_workbook(client) -> None:
     assert "spreadsheetml" in response.headers["content-type"]
     assert "filename*=UTF-8''" in response.headers["content-disposition"]
     sheets = sheet_of(response)
-    assert list(sheets) == ["主SKU清单", "子SKU清单", "店铺概况", "口径说明"]
+    assert list(sheets) == ["主SKU清单", "子SKU清单", "店铺概况", "去重商品清单", "口径说明"]
 
     # The scene is the column, its SKUs are the rows, and the stock header
     # carries the country's name so the block reads on its own.
@@ -601,9 +601,9 @@ def test_the_sub_sku_sheet_names_every_child_of_every_picked_sku(client) -> None
                            "庭院遮阳 · 遮阳棚替换布"]
 
 
-def test_asking_for_dedupe_adds_the_buy_list_beside_the_board(client) -> None:
-    """The operator chooses. Left alone the workbook is the board it always was;
-    asked for, a second list keeps each SKU once and says where it was used."""
+def test_the_buy_list_rides_along_with_the_board(client) -> None:
+    """The board repeats a SKU under every scene it answers, so the one-row-per-
+    SKU list is always in the file rather than something the operator asks for."""
     store_id = upload(client).json()["id"]
     run_job(client, store_id)
 
@@ -612,7 +612,6 @@ def test_asking_for_dedupe_adds_the_buy_list_beside_the_board(client) -> None:
     response = client.post(f"/api/stores/{store_id}/adoption/export", json={
         "picks": [pick("庭院遮阳", "遮阳棚替换布", "SKU-1"),
                   pick("庭院遮阳", "风扇", "SKU-1")],
-        "dedupe": True,
     })
 
     sheets = sheet_of(response)
@@ -658,6 +657,41 @@ def test_a_result_from_before_the_child_detail_existed_asks_for_a_rerun(client) 
 
     assert response.status_code == 409
     assert "子款库存明细" in response.json()["detail"]
+    detail = client.get(f"/api/stores/{store_id}").json()
+    assert "子款库存明细" in detail["export_blocked_reason"]
+    assert detail["outdated"] == ["retrieval", "rerank"]
+
+
+def test_export_readiness_blocks_changed_settings_and_recovers_after_update(client) -> None:
+    store_id = upload(client).json()["id"]
+    assert client.get(f"/api/stores/{store_id}").json()["export_blocked_reason"]
+    run_job(client, store_id)
+    detail = client.get(f"/api/stores/{store_id}").json()
+    assert detail["export_blocked_reason"] == ""
+    history = client.get("/api/stores").json()["stores"][0]
+    assert history["job_status"] == "ready"
+    assert history["needs_update"] is False
+    params = {**detail["params"], "recall_limit": detail["params"]["recall_limit"] + 1}
+    assert client.put(f"/api/stores/{store_id}/params", json=params).status_code == 200
+    detail = client.get(f"/api/stores/{store_id}").json()
+    assert "更新" in detail["export_blocked_reason"]
+    response = client.post(f"/api/stores/{store_id}/adoption/export", json={"picks": []})
+    assert response.status_code == 409
+    assert client.get("/api/stores").json()["stores"][0]["needs_update"] is True
+    run_job(client, store_id, stages=detail["outdated"])
+    assert client.get(f"/api/stores/{store_id}").json()["export_blocked_reason"] == ""
+    assert client.post(f"/api/stores/{store_id}/adoption/export", json={"picks": []}).status_code == 200
+
+
+def test_export_cannot_read_artifacts_while_a_pipeline_holds_the_store(client) -> None:
+    from contextlib import closing
+    from store_scenario_inspiration.reliability import StoreLease
+    store_id = upload(client).json()["id"]
+    run_job(client, store_id)
+    with closing(StoreLease(client.app.state.workspace.path(store_id, ".pipeline.lock"))):
+        response = client.post(f"/api/stores/{store_id}/adoption/export", json={"picks": []})
+    assert response.status_code == 400
+    assert "等待" in response.json()["detail"]
 
 
 def test_the_notes_sheet_names_the_parameters_this_run_used(client) -> None:
@@ -684,4 +718,19 @@ def test_a_setting_chosen_from_a_list_reads_back_in_the_words_it_was_chosen_in()
     ))
 
     assert notes["没货的要不要留着"] == "都留着，标出有没有货"
-    assert notes["实际用的模式"] == "不排除，都留着（只标出来）"
+    assert notes["模型怎么处理的"] == "只标相关 / 待复核，没有删"
+
+
+def test_the_sheet_says_whether_the_doubted_rows_were_left_out() -> None:
+    """The verdicts are the model's doubt, so the sheet has to say which way the
+    operator answered them — a reader cannot tell from the rows themselves."""
+    def notes(related_only: bool) -> dict:
+        return dict(notes_for(
+            retrieval={**retrieval(), "rerank": {"mode": "mark_only", "provider": "jev"}},
+            params={"stock_filter": "all", "scene_count": 6},
+            store={}, store_id="store-1", stock_path=Path("x"), exported=0,
+            related_only=related_only,
+        ))
+
+    assert notes(False)["导出时怎么处理"].startswith("全部导出")
+    assert notes(True)["导出时怎么处理"].startswith("只看相关的")

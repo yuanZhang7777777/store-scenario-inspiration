@@ -25,3 +25,30 @@ export function normalizedSelections(raw: unknown): Set<string> {
   }
   return selected;
 }
+
+/** Empty product/SKU identifies a whole scene; empty SKU identifies a role.
+ * Defaults apply to future results too, so polling never undoes a user's choice. */
+export interface SelectionState { defaultSelected: boolean; overrides: Record<string, boolean> }
+export function isSelected(state: SelectionState, key: string): boolean {
+  const row = readSelection(key);
+  if (!row) return false;
+  return state.overrides[key]
+    ?? state.overrides[selectionKey(row.scene_name, row.product_cn, "")]
+    ?? state.overrides[selectionKey(row.scene_name, "", "")]
+    ?? state.defaultSelected;
+}
+export function changeSelection(state: SelectionState, keys: string[], mode: "on" | "off" | "invert"): SelectionState {
+  const overrides = { ...state.overrides };
+  for (const key of keys) {
+    const row = readSelection(key);
+    if (!row) continue;
+    if (!row.main_sku) {
+      for (const existing of Object.keys(overrides)) {
+        const value = readSelection(existing);
+        if (value?.scene_name === row.scene_name && (!row.product_cn || value.product_cn === row.product_cn)) delete overrides[existing];
+      }
+    }
+    overrides[key] = mode === "invert" ? !isSelected(state, key) : mode === "on";
+  }
+  return { ...state, overrides };
+}

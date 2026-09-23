@@ -51,7 +51,7 @@ def scene_of(*roles: dict) -> dict:
 
 def answering(body) -> object:
     """An ``ask`` that always returns the same verdicts, as a model would."""
-    def ask(scene_name, roles):
+    def ask(scene, roles):
         return body([row for item in roles for row in item["candidates"]]), {"total_tokens": 10}
     return ask
 
@@ -189,8 +189,8 @@ def test_a_scene_is_one_request_not_one_per_role() -> None:
     scene: it is one answer, shown wherever it applies."""
     seen = []
 
-    def ask(scene_name, roles):
-        seen.append(scene_name)
+    def ask(scene, roles):
+        seen.append(scene["scene_name"])
         return ({row["main_sku"]: verdict("related", 0.9)
                  for item in roles for row in item["candidates"]}, {})
 
@@ -223,8 +223,8 @@ def test_a_sku_forty_roles_recalled_is_one_question() -> None:
 
 
 def test_a_scene_the_model_refused_does_not_cost_the_others_their_verdicts() -> None:
-    def ask(scene_name, roles):
-        if scene_name == "遮阳伞":
+    def ask(scene, roles):
+        if scene["scene_name"] == "遮阳伞":
             raise RuntimeError("TypeSafe 403")
         return ({row["main_sku"]: verdict("related", 1.0)
                  for item in roles for row in item["candidates"]}, {})
@@ -250,8 +250,8 @@ def test_a_scene_with_no_candidates_is_never_asked_about() -> None:
     would be a request paid for to be told nothing."""
     seen = []
 
-    def ask(scene_name, roles):
-        seen.append(scene_name)
+    def ask(scene, roles):
+        seen.append(scene["scene_name"])
         return {}, {}
 
     result = rerank_store(
@@ -312,15 +312,19 @@ def test_the_typesafe_request_asks_once_per_scene_about_its_own_skus(typesafe) -
     roles = [role("家庭安防监控安装", "CCTV监控摄像头", ["A"]),
              role("家庭安防监控安装", "监控电源", ["A", "B"])]
 
-    rerank_providers.ask_typesafe("家庭安防监控安装", roles, api_key="k")
+    rerank_providers.ask_typesafe({"scene_name": "家庭安防监控安装"}, roles, api_key="k")
 
     assert seen["key"] == "k"
     assert seen["payload"]["model"] == "jev-latest"
     # The scene, said once, so no question has to say it again.
     state = seen["payload"]["state"]
-    assert state["场景"] == "家庭安防监控安装"
-    assert state["这个场景要卖的商品"] == ["CCTV监控摄像头 EN", "监控电源 EN"]
-    assert state["判定说明"] == rerank_providers.STATED_ONCE
+    assert state["场景名称"] == "家庭安防监控安装"
+    assert state["商品参考示例"] == ["CCTV监控摄像头 EN", "监控电源 EN"]
+    assert state["参考示例说明"] == rerank_providers.EXAMPLE_NOTE
+    assert state["用途判断规则"] == rerank_providers.JUDGEMENT_RULES
+    # A scene written before the scope lists existed is judged without them
+    # rather than not judged: the rules and the examples still say what counts.
+    assert "本次活动范围" not in state
     # A, recalled by both roles, is one question.
     assert set(seen["payload"]["questions"]) == {"A", "B"}
     decision = seen["payload"]["questions"]["A"]
@@ -329,18 +333,53 @@ def test_the_typesafe_request_asks_once_per_scene_about_its_own_skus(typesafe) -
     # third one because the operator never acted on one.
     assert set(decision["criteria"]) == {"related", "unrelated"}
     assert all(value is None for value in decision["criteria"].values())
-    # Only the name, and only in English. Measured: a sentence around it costs
-    # 12 tokens a question, and the key is not read by the model at all.
-    assert decision["instructions"] == "Camera"
+    # Both names, and nothing around them. Measured: a sentence costs 12 tokens a
+    # question, and the key is not read by the model at all. The Chinese rides
+    # along because English alone is sometimes too generic to judge — it moved
+    # 77 verdicts on a 460-SKU scene, in both directions.
+    assert decision["instructions"] == "Camera（高清摄像头）"
 
 
 def test_the_product_names_in_the_state_are_not_repeated_within_a_scene(typesafe) -> None:
     seen = typesafe({"answers": {}})
     roles = [role("S", "遮阳棚", ["A"]), role("S", "遮阳棚", ["B"])]
 
-    rerank_providers.ask_typesafe("S", roles, api_key="k")
+    rerank_providers.ask_typesafe({"scene_name": "S"}, roles, api_key="k")
 
-    assert seen["payload"]["state"]["这个场景要卖的商品"] == ["遮阳棚 EN"]
+    assert seen["payload"]["state"]["商品参考示例"] == ["遮阳棚 EN"]
+
+
+def test_the_scene_carries_its_own_scope_into_the_question(typesafe) -> None:
+    """The two scope lists are the scene's own, and they are the part of the
+    state that decides — measured, taking them out leaves the verdict count where
+    it was but halves the confidence column's resolution. They are read from the
+    scene the run wrote down, so no store's scenes share one set of wording."""
+    seen = typesafe({"answers": {}})
+    scene_record = {"scene_name": "婚礼布置", "audience": "新人",
+                    "scope_in": ["迎宾展示", "桌面装饰"], "scope_out": ["日常办公"]}
+
+    rerank_providers.ask_typesafe(scene_record, [role("婚礼布置", "迎宾牌", ["A"])], api_key="k")
+
+    state = seen["payload"]["state"]
+    assert state["本次活动范围"] == ["迎宾展示", "桌面装饰"]
+    assert state["不自动扩展的范围"] == ["日常办公"]
+    # What the scene is for is not sent: the scope lists say it, in the form the
+    # judgement actually uses.
+    assert "audience" not in state
+
+
+def test_a_long_scene_shows_a_few_examples_spread_across_it(typesafe) -> None:
+    """Every role name was measured to say no more than a handful; what matters
+    is that they come from across the scene rather than all from its front."""
+    seen = typesafe({"answers": {}})
+    roles = [role("S", f"商品{i}", ["A"]) for i in range(20)]
+
+    rerank_providers.ask_typesafe({"scene_name": "S"}, roles, api_key="k")
+
+    examples = seen["payload"]["state"]["商品参考示例"]
+    assert len(examples) == rerank_providers.EXAMPLE_LIMIT
+    assert examples[0] == "商品0 EN"
+    assert examples[-1] == "商品16 EN"
 
 
 def test_a_typesafe_choice_becomes_a_verdict_with_its_certainty(typesafe) -> None:
@@ -355,7 +394,7 @@ def test_a_typesafe_choice_becomes_a_verdict_with_its_certainty(typesafe) -> Non
     }})
 
     verdicts, _ = rerank_providers.ask_typesafe(
-        "S", [role("S", "遮阳棚", ["A", "B"])], api_key="k")
+        {"scene_name": "S"}, [role("S", "遮阳棚", ["A", "B"])], api_key="k")
 
     assert verdicts["A"] == {"verdict": "unrelated", "probability": 0.55}
     assert verdicts["B"] == {"verdict": "related", "probability": 0.93}
@@ -376,7 +415,7 @@ def test_the_cutoff_reads_a_certainty_the_model_can_actually_be_unsure_about(typ
               "probabilities": {"related": 0.1, "unrelated": 0.9}},
     }})
     verdicts, _ = rerank_providers.ask_typesafe(
-        "S", [role("S", "遮阳棚", ["A", "B"])], api_key="k")
+        {"scene_name": "S"}, [role("S", "遮阳棚", ["A", "B"])], api_key="k")
 
     kept, dropped = apply_verdicts(
         [candidate("A", 1), candidate("B", 2)], verdicts, cutoff=0.5, drop=True)
@@ -394,7 +433,7 @@ def test_a_typesafe_answer_that_is_missing_or_unreadable_leaves_the_candidate_al
                                 "probabilities": {"banana": 1.0}}}})
 
     verdicts, _ = rerank_providers.ask_typesafe(
-        "S", [role("S", "遮阳棚", ["A", "B", "C"])], api_key="k")
+        {"scene_name": "S"}, [role("S", "遮阳棚", ["A", "B", "C"])], api_key="k")
 
     assert verdicts == {sku: {"verdict": None, "probability": None}
                         for sku in ("A", "B", "C")}
@@ -416,11 +455,11 @@ def test_the_jev_call_is_cached_by_the_exact_bytes_it_asked(tmp_path, monkeypatc
     monkeypatch.setattr(rerank_providers, "_post", fake_post)
     roles = [role("S", "遮阳棚", ["A"])]
 
-    first, usage = rerank_providers.ask_typesafe("S", roles, api_key="k", cache_dir=tmp_path)
+    first, usage = rerank_providers.ask_typesafe({"scene_name": "S"}, roles, api_key="k", cache_dir=tmp_path)
     second, cached_usage = rerank_providers.ask_typesafe(
-        "S", roles, api_key="k", cache_dir=tmp_path)
+        {"scene_name": "S"}, roles, api_key="k", cache_dir=tmp_path)
     rerank_providers.ask_typesafe(
-        "S", [role("S", "遮阳棚", ["A", "B"])], api_key="k", cache_dir=tmp_path)
+        {"scene_name": "S"}, [role("S", "遮阳棚", ["A", "B"])], api_key="k", cache_dir=tmp_path)
 
     assert len(asks) == 2
     assert first == second
@@ -445,7 +484,7 @@ def test_a_dropped_connection_costs_one_scene_not_the_whole_run(monkeypatch) -> 
     monkeypatch.setattr(rerank_providers.urllib.request, "urlopen", drop)
 
     with pytest.raises(RuntimeError, match="TypeSafe 无法访问"):
-        rerank_providers.ask_typesafe("S", [role("S", "遮阳棚", ["A"])], api_key="k")
+        rerank_providers.ask_typesafe({"scene_name": "S"}, [role("S", "遮阳棚", ["A"])], api_key="k")
 
 
 def test_a_deepseek_answer_names_the_unrelated_ones_and_silence_is_related() -> None:
@@ -501,9 +540,9 @@ def test_the_deepseek_call_is_cached_by_the_exact_bytes_it_asked(tmp_path, monke
     monkeypatch.setattr(rerank_providers, "_post", fake_post)
     roles = [role("S", "遮阳棚", ["A"])]
 
-    first, usage = rerank_providers.ask_deepseek("S", roles, api_key="k", cache_dir=tmp_path)
+    first, usage = rerank_providers.ask_deepseek({"scene_name": "S"}, roles, api_key="k", cache_dir=tmp_path)
     second, cached_usage = rerank_providers.ask_deepseek(
-        "S", roles, api_key="k", cache_dir=tmp_path)
+        {"scene_name": "S"}, roles, api_key="k", cache_dir=tmp_path)
 
     assert len(asks) == 1
     assert first == second
@@ -533,7 +572,7 @@ def test_a_scene_too_big_for_one_reply_is_asked_in_slices(tmp_path, monkeypatch)
     monkeypatch.setattr(rerank_providers, "_post", fake_post)
 
     verdicts, usage = rerank_providers.ask_deepseek(
-        "S", [role("S", "遮阳棚", ["A", "B", "C"])], api_key="k", cache_dir=tmp_path)
+        {"scene_name": "S"}, [role("S", "遮阳棚", ["A", "B", "C"])], api_key="k", cache_dir=tmp_path)
 
     assert len(asks) == 2
     assert sorted(verdicts) == ["A", "B", "C"]

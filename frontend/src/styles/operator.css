@@ -8,9 +8,14 @@
 .operator-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 18px; margin-top: 20px; }
 .operator-fields .field { min-width: 0; }
 .operator-fields input, .operator-fields select { width: 100%; box-sizing: border-box; }
-.operator-technical { margin-top: 20px; }
-.operator-technical > summary { cursor: pointer; font-size: 13px; }
-.operator-settings > summary, .operator-technical > summary { line-height: 1.7; }
+/* A knob that reads as a continuum. The value sits in the label so the exact
+   number is still readable, and the ends say what the number means. */
+.operator-fields .slider-field > span { display: flex; justify-content: space-between; gap: 10px; }
+.operator-fields .slider-field output { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.operator-fields .slider-field input[type="range"] { width: 100%; accent-color: var(--accent); }
+.slider-ends { display: flex; justify-content: space-between; gap: 10px; }
+.slider-ends small { font-size: 12px; }
+.operator-settings > summary { line-height: 1.7; }
 .operator-settings > summary .muted { font-size: 13px; font-weight: 400; }
 .operator-settings .form-actions { margin-top: 20px; }
 .operator-log { padding-left: 18px; margin: 14px 0 0; }

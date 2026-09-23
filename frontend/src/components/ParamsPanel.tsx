@@ -2,10 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { api, type ParamField, type Params } from "../api";
 import { PARAM_TITLES, paramsEqual, validateParams } from "../operatorUx";
 
-const COMMON: (keyof Params)[] = ["scene_count", "products_per_scene", "stock_filter"];
+// One list, in the order an operator set them: what the analysis is for, then
+// how wide it searches, then the writing. The form no longer splits them into
+// "ordinary" and "technical" — a knob nobody recognises is still a knob they
+// have to decide whether to touch.
+const ORDER: (keyof Params)[] = [
+  "scene_count", "products_per_scene", "stock_filter",
+  "expansion_terms", "recall_limit", "rerank_provider", "temperature",
+];
+/** The knobs that read as a continuum rather than a count. */
+const SLIDERS = new Set<keyof Params>(["temperature"]);
 const OPTIONS: Record<string, string> = {
   all: "全部商品（显示库存状态）", in_stock: "仅目标国家有货",
-  mark_only: "保留并标记", drop: "排除明显无关的商品",
   jev: "Jev", deepseek: "DeepSeek", off: "不复核",
 };
 const HINTS: Record<keyof Params, string> = {
@@ -14,10 +22,12 @@ const HINTS: Record<keyof Params, string> = {
   stock_filter: "库存未知不代表无货。",
   expansion_terms: "0 表示不扩写搜索词。",
   recall_limit: "从产品库为每类商品保留的候选数量。",
-  rerank: "保留模式不会删除候选商品。",
   rerank_provider: "使用已配置的模型服务，可能产生费用。",
-  rerank_cutoff: "数值越高，排除越谨慎。",
-  temperature: "数值越高，表达越多样。",
+  temperature: "往右更发散，往左更贴资料。",
+};
+/** What the two ends of a slider mean, so the number is not the only clue. */
+const ENDS: Partial<Record<keyof Params, [string, string]>> = {
+  temperature: ["更稳、更贴资料", "更发散、更多可能"],
 };
 interface Props {
   /** Absent before the store exists: on the upload page there is nothing to save
@@ -80,33 +90,44 @@ export default function ParamsPanel({ storeId, params, onSaved, busy, onDraft, o
   }
 
   function renderField(field: ParamField) {
-    const disabled = busy || applying ||
-      (field.name === "rerank" && draft.rerank_provider === "off") ||
-      (field.name === "rerank_cutoff" && (draft.rerank !== "drop" || draft.rerank_provider === "off"));
+    const disabled = busy || applying;
     const value = draft[field.name];
+    const number = typeof value === "number" && Number.isFinite(value) ? value : "";
+    if (field.options) return <label className="field" key={field.name}>
+      <span>{PARAM_TITLES[field.name]}</span>
+      <select disabled={disabled} value={value} onChange={(event) => {
+        setNote(""); setDraft({ ...draft, [field.name]: event.target.value });
+      }}>{field.options.map((option) => <option key={option} value={option}>{OPTIONS[option] || option}</option>)}</select>
+      <small className="muted">{HINTS[field.name]}</small>
+    </label>;
+    if (SLIDERS.has(field.name)) {
+      const [left, right] = ENDS[field.name] ?? ["", ""];
+      return <label className="field slider-field" key={field.name}>
+        <span>{PARAM_TITLES[field.name]} <output>{number}</output></span>
+        <input disabled={disabled} type="range" min={field.minimum ?? undefined}
+          max={field.maximum ?? undefined} step={field.step}
+          value={typeof number === "number" ? number : (field.default as number)}
+          onChange={(event) => { setNote(""); setDraft({ ...draft, [field.name]: event.target.valueAsNumber }); }} />
+        <span className="slider-ends"><small className="muted">{left}</small><small className="muted">{right}</small></span>
+        <small className="muted">{HINTS[field.name]}</small>
+      </label>;
+    }
     return <label className="field" key={field.name}>
       <span>{PARAM_TITLES[field.name]}</span>
-      {field.options ? <select disabled={disabled} value={value} onChange={(event) => {
-        setNote(""); setDraft({ ...draft, [field.name]: event.target.value });
-      }}>{field.options.map((option) => <option key={option} value={option}>{OPTIONS[option] || option}</option>)}</select> :
-        <input disabled={disabled} type="number" min={field.minimum ?? undefined}
-          max={field.maximum ?? undefined} step={field.step}
-          value={typeof value === "number" && Number.isFinite(value) ? value : ""}
-          onChange={(event) => { setNote(""); setDraft({ ...draft, [field.name]: event.target.valueAsNumber }); }} />}
+      <input disabled={disabled} type="number" min={field.minimum ?? undefined}
+        max={field.maximum ?? undefined} step={field.step} value={number}
+        onChange={(event) => { setNote(""); setDraft({ ...draft, [field.name]: event.target.valueAsNumber }); }} />
       <small className="muted">{HINTS[field.name]}</small>
     </label>;
   }
 
   return <details className="card advanced-settings operator-settings">
-    <summary>调整推荐范围 <span className="muted">{storeId ? "选填，默认即可" : "选填，默认即可；改了就用这里这套跑"}</span>{changed && <span className="count">{storeId ? "有未保存修改" : "已改默认值"}</span>}</summary>
+    <summary>生成设置 <span className="muted">选填，默认设置即可开始</span>{changed && <span className="count">{storeId ? "有未保存修改" : "已修改默认设置"}</span>}</summary>
     {schemaError ? <p className="notice warn" role="alert">设置暂时无法加载。<button className="btn ghost small" onClick={() => setReload((value) => value + 1)}>重试</button></p> :
-      fields.length === 0 ? <p className="muted" role="status">正在加载设置…</p> : <>
-        <div className="business-fields operator-fields">{fields.filter((field) => COMMON.includes(field.name)).map(renderField)}</div>
-        <details className="operator-technical">
-          <summary>技术设置 <span className="muted">通常不用改</span></summary>
-          <div className="business-fields operator-fields">{fields.filter((field) => !COMMON.includes(field.name)).map(renderField)}</div>
-        </details>
-      </>}
+      fields.length === 0 ? <p className="muted" role="status">正在加载设置…</p> :
+        <div className="business-fields operator-fields">{ORDER.map((name) =>
+          fields.find((field) => field.name === name)).filter(Boolean).map((field) =>
+          renderField(field as ParamField))}</div>}
     <div className="form-actions">
       {storeId && <button className="btn small" disabled={busy || applying || !changed || !fields.length} onClick={apply}>{applying ? "保存中…" : "保存设置"}</button>}
       <button className="btn ghost small" disabled={busy || applying || !changed} onClick={() => { setDraft(params); setNote(""); }}>{storeId ? "撤销修改" : "恢复默认"}</button>

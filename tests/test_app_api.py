@@ -636,7 +636,7 @@ def test_the_parameter_schema_carries_a_chinese_explanation_per_knob(client) -> 
 
     assert [field["name"] for field in fields] == [
         "scene_count", "products_per_scene", "expansion_terms", "recall_limit",
-        "stock_filter", "rerank", "rerank_provider", "rerank_cutoff", "temperature",
+        "stock_filter", "rerank_provider", "temperature",
     ]
     assert all(field["description"].strip() for field in fields)
     for field in fields:
@@ -667,9 +667,8 @@ def test_a_store_starts_from_the_default_parameters(client) -> None:
     params = client.get(f"/api/stores/{store_id}/params").json()
 
     assert params == {"scene_count": 6, "products_per_scene": 16, "expansion_terms": 0,
-                      "recall_limit": 30, "stock_filter": "all", "rerank": "mark_only",
-                      "rerank_provider": "jev", "rerank_cutoff": 50,
-                      "temperature": 0.2}
+                      "recall_limit": 30, "stock_filter": "all",
+                      "rerank_provider": "jev", "temperature": 0.2}
 
 
 def test_parameters_are_saved_per_store_and_survive_a_restart(client, tmp_path) -> None:
